@@ -1,7 +1,7 @@
 from pathlib import Path
 
-
-RAW_DOCS_PATH = Path("data/raw_docs")
+BASE_DIR = Path(__file__).resolve().parents[2]
+RAW_DOCS_PATH = BASE_DIR / "data" / "raw_docs"
 
 
 def load_text_documents():
