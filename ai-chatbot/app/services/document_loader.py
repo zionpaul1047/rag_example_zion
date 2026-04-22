@@ -1,22 +1,34 @@
 from pathlib import Path
+from app.services.parsers.parser_factory import get_parser
+from app.utils.text_cleaner import clean_text
 
-BASE_DIR = Path(__file__).resolve().parents[2]
-RAW_DOCS_PATH = BASE_DIR / "data" / "raw_docs"
 
+def load_documents(data_dir: str) -> list[dict]:
+    base_path = Path(data_dir)
 
-def load_text_documents():
+    if not base_path.exists():
+        raise FileNotFoundError(f"문서 폴더를 찾을 수 없습니다: {data_dir}")
+
     documents = []
 
-    if not RAW_DOCS_PATH.exists():
-        print(f"[오류] 폴더가 없습니다: {RAW_DOCS_PATH}")
-        return documents
+    for file_path in sorted(base_path.iterdir()):
+        if not file_path.is_file():
+            continue
 
-    for file_path in RAW_DOCS_PATH.glob("*.txt"):
-        content = file_path.read_text(encoding="utf-8")
+        try:
+            parser = get_parser(file_path)
+            document = parser.parse(file_path)
 
-        documents.append({
-            "source": file_path.name,
-            "content": content
-        })
+            raw_content = document.get("content", "")
+            cleaned_content = clean_text(raw_content)
+
+            if cleaned_content.strip():
+                document["content"] = cleaned_content
+                documents.append(document)
+
+        except ValueError as e:
+            print(f"[건너뜀] {e}")
+        except Exception as e:
+            print(f"[오류] 파일 처리 실패: {file_path.name} / {e}")
 
     return documents

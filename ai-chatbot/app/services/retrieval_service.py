@@ -1,10 +1,11 @@
 import psycopg
+from pgvector.psycopg import register_vector
 from app.core.settings import settings
 from app.services.embedding_service import embed_text
 
 
-def search_similar_documents(query: str, limit: int = 3):
-    query_embedding = embed_text(query)
+def search_similar_documents(query: str, limit: int = 10) -> list[dict]:
+    query_embedding = embed_text(query, is_query=True)
 
     conn = psycopg.connect(
         host=settings.POSTGRES_HOST,
@@ -14,17 +15,14 @@ def search_similar_documents(query: str, limit: int = 3):
         password=settings.POSTGRES_PASSWORD
     )
 
+    register_vector(conn)
+
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT
-                id,
-                source,
-                chunk_index,
-                content,
-                embedding <-> %s::vector AS distance
+            SELECT source, chunk_index, content, embedding <=> %s::vector AS distance
             FROM documents
-            ORDER BY embedding <-> %s::vector
+            ORDER BY embedding <=> %s::vector
             LIMIT %s
             """,
             (query_embedding, query_embedding, limit)
@@ -37,11 +35,10 @@ def search_similar_documents(query: str, limit: int = 3):
     results = []
     for row in rows:
         results.append({
-            "id": row[0],
-            "source": row[1],
-            "chunk_index": row[2],
-            "content": row[3],
-            "distance": row[4]
+            "source": row[0],
+            "chunk_index": row[1],
+            "content": row[2],
+            "distance": float(row[3])
         })
 
     return results

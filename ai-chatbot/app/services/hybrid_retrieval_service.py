@@ -1,51 +1,30 @@
+from app.core.settings import settings
 from app.services.retrieval_service import search_similar_documents
-from app.services.elasticsearch_search_service import search_by_keyword
+from app.services.bm25_service import search_bm25
+from app.services.rrf_service import reciprocal_rank_fusion
 
 
-def hybrid_search(query: str, limit: int = 5):
-    vector_results = search_similar_documents(query, limit=5)
-    keyword_results = search_by_keyword(query, limit=5)
+def hybrid_search(query: str, limit: int | None = None) -> list[dict]:
+    retrieval_limit = limit or settings.TOP_K_RETRIEVAL
 
-    merged = {}
+    vector_raw = search_similar_documents(query, limit=retrieval_limit)
+    bm25_results = search_bm25(query, limit=retrieval_limit)
 
-    # 1. pgvector 결과 반영
-    for item in vector_results:
-        key = (item["source"], item["chunk_index"])
-
-        vector_score = 1 / (1 + item["distance"])
-
-        merged[key] = {
+    vector_results = []
+    for rank, item in enumerate(vector_raw, start=1):
+        vector_results.append({
             "source": item["source"],
             "chunk_index": item["chunk_index"],
             "content": item["content"],
-            "vector_score": vector_score,
-            "keyword_score": 0.0,
-            "final_score": vector_score
-        }
+            "distance": item.get("distance", 0.0),
+            "rank": rank,
+            "search_type": "vector"
+        })
 
-    # 2. Elasticsearch 결과 반영
-    for item in keyword_results:
-        key = (item["source"], item["chunk_index"])
+    fused_results = reciprocal_rank_fusion(
+        vector_results=vector_results,
+        keyword_results=bm25_results,
+        limit=retrieval_limit
+    )
 
-        keyword_score = float(item["score"])
-
-        if key in merged:
-            merged[key]["keyword_score"] = keyword_score
-            merged[key]["final_score"] = (
-                merged[key]["vector_score"] + keyword_score
-            )
-        else:
-            merged[key] = {
-                "source": item["source"],
-                "chunk_index": item["chunk_index"],
-                "content": item["content"],
-                "vector_score": 0.0,
-                "keyword_score": keyword_score,
-                "final_score": keyword_score
-            }
-
-    # 3. 정렬
-    results = list(merged.values())
-    results.sort(key=lambda x: x["final_score"], reverse=True)
-
-    return results[:limit]
+    return fused_results

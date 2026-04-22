@@ -1,5 +1,4 @@
 import psycopg
-from pgvector.psycopg import register_vector
 from app.core.settings import settings
 
 
@@ -16,21 +15,26 @@ def setup_vector_table():
     with conn.cursor() as cur:
         cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
 
-    register_vector(conn)
+        cur.execute("DROP TABLE IF EXISTS documents;")
 
-    with conn.cursor() as cur:
-        cur.execute("""
-            DROP TABLE IF EXISTS documents;
-        """)
-
-        cur.execute("""
+        cur.execute(
+            """
             CREATE TABLE documents (
-                id bigserial PRIMARY KEY,
-                source text NOT NULL,
-                chunk_index integer NOT NULL,
-                content text NOT NULL,
-                embedding vector(1536) NOT NULL
-            );
-        """)
+                id BIGSERIAL PRIMARY KEY,
+                source TEXT NOT NULL,
+                chunk_index INT NOT NULL,
+                content TEXT NOT NULL,
+                embedding VECTOR(1024)
+            )
+            """
+        )
+
+        cur.execute(
+            """
+            CREATE INDEX documents_embedding_hnsw_idx
+            ON documents
+            USING hnsw (embedding vector_cosine_ops)
+            """
+        )
 
     conn.close()

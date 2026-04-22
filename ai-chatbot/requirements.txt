@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+pydantic
+python-dotenv
+openai
+langchain
+langchain-openai
+langchain-text-splitters
+psycopg[binary]
+pgvector
+elasticsearch==8.13.2
+beautifulsoup4
+pypdf
+python-docx
+sentence-transformers
+torch
