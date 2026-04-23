@@ -35,6 +35,13 @@ def _get_float(name: str, default: float) -> float:
         return default
 
 
+def _get_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None or value.strip() == "":
+        return default
+    return value.strip().lower() in ("1", "true", "yes", "y", "on")
+
+
 class Settings:
     APP_NAME: str = _get_str("APP_NAME", "AI Chatbot")
     APP_ENV: str = _get_str("APP_ENV", "local")
@@ -86,6 +93,17 @@ class Settings:
     EMBEDDING_BATCH_SIZE: int = _get_int("EMBEDDING_BATCH_SIZE", 32)
     PG_INSERT_BATCH_SIZE: int = _get_int("PG_INSERT_BATCH_SIZE", 100)
     ES_BULK_BATCH_SIZE: int = _get_int("ES_BULK_BATCH_SIZE", 200)
+
+    OCR_ENABLED: bool = _get_bool("OCR_ENABLED", True)
+    OCR_LANG_LIST: str = _get_str("OCR_LANG_LIST", "ko,en")
+    OCR_MIN_TEXT_LENGTH: int = _get_int("OCR_MIN_TEXT_LENGTH", 80)
+    OCR_RENDER_DPI: int = _get_int("OCR_RENDER_DPI", 200)
+
+    APP_SQLITE_PATH: str = _get_str("APP_SQLITE_PATH", "data/app_state.db")
+    SESSION_UPLOAD_DIR: str = _get_str("SESSION_UPLOAD_DIR", "data/uploads/session")
+    MANAGED_UPLOAD_DIR: str = _get_str("MANAGED_UPLOAD_DIR", "data/uploads/managed")
+    SESSION_FILE_TTL_DAYS: int = _get_int("SESSION_FILE_TTL_DAYS", 7)
+    MAX_UPLOAD_FILE_SIZE_MB: int = _get_int("MAX_UPLOAD_FILE_SIZE_MB", 50)
 
 
 settings = Settings()

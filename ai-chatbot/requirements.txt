@@ -14,3 +14,11 @@ pypdf
 python-docx
 sentence-transformers
 torch
+gradio
+requests
+sseclient-py
+easyocr
+pymupdf
+pillow
+numpy
+python-multipart
