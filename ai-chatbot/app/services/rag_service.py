@@ -9,6 +9,7 @@ from app.services.chat_history_service import (
     add_message,
     get_recent_messages
 )
+from app.services.document_registry_service import get_parsed_session_documents
 from app.services.llm_routing_service import generate_with_routing, stream_with_routing
 from app.services.llm_adapters.factory import get_llm_adapter
 
@@ -55,14 +56,19 @@ def _cleanup_to_korean(provider: str, answer: str) -> str:
 def _build_prompts(user_message: str, conversation_id: int):
     history = get_recent_messages(conversation_id, limit=6)
 
-    hybrid_results = hybrid_search(
+    session_docs = get_parsed_session_documents(conversation_id)
+    kb_results = hybrid_search(
         user_message,
         limit=settings.TOP_K_RETRIEVAL
     )
 
+    merged_candidates = []
+    merged_candidates.extend(session_docs)
+    merged_candidates.extend(kb_results)
+
     reranked = rerank_documents(
         query=user_message,
-        documents=hybrid_results,
+        documents=merged_candidates,
         top_n=settings.TOP_N_RERANK
     )
 
@@ -71,11 +77,12 @@ def _build_prompts(user_message: str, conversation_id: int):
 
     for item in reranked:
         context_blocks.append(
-            f"[출처:{item['source']} / chunk:{item['chunk_index']}]\n{item['content']}"
+            f"[출처:{item['source']} / chunk:{item.get('chunk_index', 0)} / type:{item.get('search_type', 'kb')}]\n{item['content']}"
         )
         sources.append({
             "source": item["source"],
-            "chunk_index": item["chunk_index"],
+            "chunk_index": item.get("chunk_index", 0),
+            "search_type": item.get("search_type", "kb"),
             "rerank_score": item.get("rerank_score")
         })
 
@@ -98,7 +105,7 @@ def _build_prompts(user_message: str, conversation_id: int):
 6. 영어, 일본어, 중국어, 태국어 등 다른 언어를 섞지 마세요.
 7. 문서에 영어 용어가 있더라도 설명은 한국어로 작성하세요.
 8. 답변은 먼저 핵심 해결 방법부터 말하고, 필요하면 추가 확인 사항을 덧붙이세요.
-9. 외부 입력, HDMI, Wi-Fi 같은 용어만 예외적으로 유지할 수 있으며, 그 외에는 한국어로 바꾸세요.
+9. 사용자가 업로드한 세션 문서가 있으면 우선 참고하고, 부족하면 공식 KB를 참고하세요.
 """.strip()
 
     user_prompt = f"""

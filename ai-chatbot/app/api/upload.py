@@ -10,6 +10,12 @@ from app.services.document_registry_service import (
     list_managed_documents,
     approve_managed_document
 )
+from app.services.upload_processing_service import (
+    process_session_document,
+    process_managed_document,
+    auto_process_session_document
+)
+from app.services.managed_indexing_service import index_managed_document
 
 router = APIRouter()
 
@@ -42,12 +48,15 @@ def upload_session_file(
         file_size=saved["file_size"],
     )
 
+    auto_result = auto_process_session_document(doc_id)
+    final_status = auto_result.get("doc_status", "uploaded")
+
     return SessionUploadResponse(
         id=doc_id,
         scope="session",
         original_name=saved["original_name"],
         file_category=saved["file_category"],
-        doc_status="uploaded",
+        doc_status=final_status,
         conversation_id=conversation_id
     )
 
@@ -55,6 +64,14 @@ def upload_session_file(
 @router.get("/session-files")
 def get_session_files(conversation_id: int | None = None):
     return list_session_documents(conversation_id=conversation_id)
+
+
+@router.post("/session-files/{document_id}/process")
+def process_uploaded_session_file(document_id: int):
+    try:
+        return process_session_document(document_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/admin/rag-documents/upload", response_model=ManagedUploadResponse)
@@ -104,3 +121,19 @@ def approve_document(document_id: int, approved_by: str | None = Form(default=No
         "document_id": document_id,
         "approved_by": approved_by
     }
+
+
+@router.post("/admin/rag-documents/{document_id}/process")
+def process_uploaded_managed_document(document_id: int):
+    try:
+        return process_managed_document(document_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.post("/admin/rag-documents/{document_id}/index")
+def index_uploaded_managed_document(document_id: int):
+    try:
+        return index_managed_document(document_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e

@@ -208,6 +208,36 @@ def list_managed_documents() -> list[dict]:
     return [dict(row) for row in rows]
 
 
+def get_session_document(document_id: int) -> dict | None:
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT * FROM session_documents
+        WHERE id = ?
+    """, (document_id,))
+
+    row = cur.fetchone()
+    conn.close()
+
+    return dict(row) if row else None
+
+
+def get_managed_document(document_id: int) -> dict | None:
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT * FROM managed_documents
+        WHERE id = ?
+    """, (document_id,))
+
+    row = cur.fetchone()
+    conn.close()
+
+    return dict(row) if row else None
+
+
 def approve_managed_document(document_id: int, approved_by: str | None = None):
     conn = get_conn()
     cur = conn.cursor()
@@ -244,6 +274,109 @@ def update_session_document_processing(
         WHERE id = ?
         """,
         (doc_status, ocr_text, vision_summary, parsed_text, document_id)
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def update_managed_document_processing(
+    document_id: int,
+    status: str,
+    parsed_text: str | None = None
+):
+    conn = get_conn()
+    cur = conn.cursor()
+
+    now = datetime.utcnow().isoformat()
+
+    cur.execute(
+        """
+        UPDATE managed_documents
+        SET status = ?, parsed_text = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (status, parsed_text, now, document_id)
+    )
+
+    conn.commit()
+    conn.close()
+
+def get_parsed_session_documents(conversation_id: int) -> list[dict]:
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT id, original_name, parsed_text, ocr_text, vision_summary
+        FROM session_documents
+        WHERE conversation_id = ?
+          AND doc_status = 'parsed'
+        ORDER BY id DESC
+        """,
+        (conversation_id,)
+    )
+
+    rows = cur.fetchall()
+    conn.close()
+
+    results = []
+    for row in rows:
+        parsed_text = row["parsed_text"] or ""
+        ocr_text = row["ocr_text"] or ""
+        vision_summary = row["vision_summary"] or ""
+
+        merged_text_parts = []
+        if parsed_text.strip():
+            merged_text_parts.append(parsed_text.strip())
+        if ocr_text.strip():
+            merged_text_parts.append(ocr_text.strip())
+        if vision_summary.strip():
+            merged_text_parts.append(vision_summary.strip())
+
+        merged_text = "\n".join(merged_text_parts).strip()
+
+        results.append({
+            "id": row["id"],
+            "source": row["original_name"],
+            "content": merged_text,
+            "chunk_index": 0,
+            "search_type": "session"
+        })
+
+    return results
+
+def get_approved_managed_documents() -> list[dict]:
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT * FROM managed_documents
+        WHERE status IN ('approved', 'parsed')
+        ORDER BY id DESC
+        """
+    )
+
+    rows = cur.fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]
+
+
+def mark_managed_document_indexed(document_id: int):
+    conn = get_conn()
+    cur = conn.cursor()
+
+    now = datetime.utcnow().isoformat()
+
+    cur.execute(
+        """
+        UPDATE managed_documents
+        SET status = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        ("indexed", now, document_id)
     )
 
     conn.commit()
