@@ -57,6 +57,11 @@ class Settings:
     OPENAI_API_KEY: str = _get_str("OPENAI_API_KEY", "")
     OPENAI_CHAT_MODEL: str = _get_str("OPENAI_CHAT_MODEL", "gpt-4.1-mini")
     OPENAI_EMBEDDING_MODEL: str = _get_str("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+    OPENAI_VISION_MODEL: str = _get_str("OPENAI_VISION_MODEL", "gpt-4.1-mini")
+
+    VISION_ENABLED: bool = _get_bool("VISION_ENABLED", True)
+    VISION_PROVIDER: str = _get_str("VISION_PROVIDER", "openai")
+    VISION_MAX_IMAGE_SIZE_MB: int = _get_int("VISION_MAX_IMAGE_SIZE_MB", 10)
 
     LLM_PROVIDER: str = _get_str("LLM_PROVIDER", "openai")
     PRIMARY_LLM_PROVIDER: str = _get_str("PRIMARY_LLM_PROVIDER", "ollama")
