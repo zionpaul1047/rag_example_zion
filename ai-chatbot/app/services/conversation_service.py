@@ -33,6 +33,7 @@ def list_conversations(username: str | None = None) -> list[dict]:
                 c.created_at AS created_at,
                 COALESCE(MAX(m.created_at), c.created_at) AS updated_at,
                 COALESCE(
+                    NULLIF(c.title, ''),
                     (
                         SELECT m2.content
                         FROM messages m2
@@ -46,7 +47,7 @@ def list_conversations(username: str | None = None) -> list[dict]:
                 COUNT(m.id) AS message_count
             FROM conversations c
             LEFT JOIN messages m ON m.conversation_id = c.id
-            GROUP BY c.id, c.created_at
+            GROUP BY c.id, c.created_at, c.title
             ORDER BY COALESCE(MAX(m.created_at), c.created_at) DESC
         """)
     else:
@@ -55,7 +56,7 @@ def list_conversations(username: str | None = None) -> list[dict]:
                 id,
                 created_at,
                 created_at AS updated_at,
-                '새 대화' AS title,
+                COALESCE(NULLIF(title, ''), '새 대화') AS title,
                 0 AS message_count
             FROM conversations
             ORDER BY id DESC

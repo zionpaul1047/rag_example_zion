@@ -705,3 +705,156 @@
     grid-template-columns: 1fr;
   }
 }
+
+.chat-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 20px;
+}
+
+.chat-main {
+  min-height: calc(100vh - 150px);
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-controls {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 14px;
+}
+
+.message-list {
+  flex: 1;
+  margin-top: 14px;
+  padding: 16px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+  overflow-y: auto;
+  max-height: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.chat-message {
+  max-width: 82%;
+  border-radius: 18px;
+  padding: 14px 16px;
+  border: 1px solid #e5e7eb;
+}
+
+.chat-message.user {
+  align-self: flex-end;
+  background: #2563eb;
+  color: white;
+  border-color: #2563eb;
+}
+
+.chat-message.assistant {
+  align-self: flex-start;
+  background: white;
+  color: #111827;
+}
+
+.chat-message__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.chat-message__content {
+  white-space: pre-wrap;
+  line-height: 1.65;
+  font-size: 14px;
+}
+
+.copy-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.18);
+  color: inherit;
+}
+
+.chat-message.assistant .copy-btn {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.chat-input-area {
+  margin-top: 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 18px;
+  padding: 12px;
+  background: white;
+}
+
+.chat-input {
+  width: 100%;
+  border: none;
+  outline: none;
+  resize: vertical;
+  font-size: 15px;
+  line-height: 1.5;
+  padding: 8px;
+}
+
+.source-card {
+  align-self: start;
+  position: sticky;
+  top: 20px;
+}
+
+.source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.source-item {
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.source-item__title {
+  font-size: 14px;
+  font-weight: 800;
+  color: #111827;
+  margin-bottom: 6px;
+}
+
+.source-item__meta,
+.source-item__score {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+@media (max-width: 1200px) {
+  .chat-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .source-card {
+    position: static;
+  }
+}
+
+@media (max-width: 700px) {
+  .chat-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-message {
+    max-width: 100%;
+  }
+}

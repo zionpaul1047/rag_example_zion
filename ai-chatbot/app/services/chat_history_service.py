@@ -17,7 +17,8 @@ def setup_chat_db():
     cur.execute("""
     CREATE TABLE IF NOT EXISTS conversations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        title TEXT
     )
     """)
 
@@ -30,6 +31,13 @@ def setup_chat_db():
         created_at TEXT NOT NULL
     )
     """)
+
+    # 기존 DB에 title 컬럼 없을 경우 추가
+    cur.execute("PRAGMA table_info(conversations)")
+    columns = [row[1] for row in cur.fetchall()]
+
+    if "title" not in columns:
+        cur.execute("ALTER TABLE conversations ADD COLUMN title TEXT")
 
     conn.commit()
     conn.close()
@@ -94,3 +102,20 @@ def get_recent_messages(conversation_id: int, limit: int = 6) -> list[dict]:
     rows.reverse()
 
     return [{"role": row[0], "content": row[1]} for row in rows]
+
+
+def update_conversation_title(conversation_id: int, title: str):
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        UPDATE conversations
+        SET title = ?
+        WHERE id = ?
+        """,
+        (title, conversation_id)
+    )
+
+    conn.commit()
+    conn.close()

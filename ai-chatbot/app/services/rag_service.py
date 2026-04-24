@@ -3,11 +3,13 @@ import re
 from app.core.settings import settings
 from app.services.hybrid_retrieval_service import hybrid_search
 from app.services.reranker_service import rerank_documents
+from app.services.title_service import generate_title
 from app.services.chat_history_service import (
     setup_chat_db,
     create_conversation,
     add_message,
-    get_recent_messages
+    get_recent_messages,
+    update_conversation_title
 )
 from app.services.document_registry_service import get_parsed_session_documents
 from app.services.llm_routing_service import generate_with_routing, stream_with_routing
@@ -156,8 +158,14 @@ def ask_rag(
 ) -> dict:
     setup_chat_db()
 
+    is_new_conversation = conversation_id is None
+
     if conversation_id is None:
         conversation_id = create_conversation()
+
+    if is_new_conversation:
+        title = generate_title(user_message, llm_provider or "auto")
+        update_conversation_title(conversation_id, title)
 
     system_prompt, user_prompt, sources = _build_prompts(
         user_message=user_message,
@@ -194,8 +202,14 @@ def ask_rag_stream(
 ):
     setup_chat_db()
 
+    is_new_conversation = conversation_id is None
+
     if conversation_id is None:
         conversation_id = create_conversation()
+
+    if is_new_conversation:
+        title = generate_title(user_message, llm_provider or "auto")
+        update_conversation_title(conversation_id, title)
 
     system_prompt, user_prompt, sources = _build_prompts(
         user_message=user_message,
