@@ -110,5 +110,9 @@ class Settings:
     SESSION_FILE_TTL_DAYS: int = _get_int("SESSION_FILE_TTL_DAYS", 7)
     MAX_UPLOAD_FILE_SIZE_MB: int = _get_int("MAX_UPLOAD_FILE_SIZE_MB", 50)
 
+    JWT_SECRET_KEY: str = _get_str("JWT_SECRET_KEY", "dev-secret-key-change-me")
+    JWT_ALGORITHM: str = _get_str("JWT_ALGORITHM", "HS256")
+    JWT_EXPIRE_MINUTES: int = _get_int("JWT_EXPIRE_MINUTES", 1440)
+
 
 settings = Settings()

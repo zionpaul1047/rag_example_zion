@@ -1,193 +1,141 @@
-import { useState } from "react";
-import axios from "axios";
+import { useMemo, useState } from "react";
+import "./App.css";
+import Sidebar from "./components/Sidebar";
+import Topbar from "./components/Topbar";
+import PlaceholderCard from "./components/PlaceholderCard";
+import RoleGuard from "./components/RoleGuard";
+import ChatPage from "./pages/ChatPage";
+import SessionFilesPage from "./pages/SessionFilesPage";
+import RagDocumentsPage from "./pages/RagDocumentsPage";
+import LoginPage from "./pages/LoginPage";
+import { useAuth } from "./context/AuthContext";
 
 function App() {
-  const [message, setMessage] = useState("");
-  const [chatList, setChatList] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const { isAuthenticated, role } = useAuth();
+  const [menu, setMenu] = useState("chat");
 
-  const sendMessage = async () => {
-    if (!message.trim()) return;
+  const visibleMenus = useMemo(() => {
+    const common = [
+      { key: "chat", label: "채팅" },
+      { key: "session-files", label: "세션 파일" },
+      { key: "settings", label: "설정" },
+    ];
 
-    const userMessage = message;
-
-    setChatList((prev) => [
-      ...prev,
-      { role: "user", text: userMessage }
-    ]);
-
-    setMessage("");
-    setLoading(true);
-
-    try {
-      const response = await axios.post("http://127.0.0.1:8000/chat", {
-        message: userMessage,
-      });
-
-      setChatList((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          text: response.data.answer,
-          sources: response.data.sources || [],
-        },
-      ]);
-    } catch (error) {
-      setChatList((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          text: "오류가 발생했습니다. 서버 연결 상태를 확인해주세요.",
-          sources: [],
-        },
-      ]);
-      console.error(error);
-    } finally {
-      setLoading(false);
+    if (role === "admin") {
+      return [
+        { key: "dashboard", label: "대시보드" },
+        ...common,
+        { key: "rag-docs", label: "RAG 문서 관리" },
+        { key: "index-jobs", label: "인덱싱 작업" },
+        { key: "quality-test", label: "품질 테스트" },
+      ];
     }
-  };
 
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter") {
-      sendMessage();
+    return [
+      { key: "chat", label: "채팅" },
+      { key: "my-conversations", label: "내 대화" },
+      { key: "session-files", label: "세션 파일" },
+      { key: "settings", label: "설정" },
+    ];
+  }, [role]);
+
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
+
+  const renderPage = () => {
+    switch (menu) {
+      case "chat":
+        return <ChatPage role={role} />;
+
+      case "session-files":
+        return <SessionFilesPage role={role} />;
+
+      case "rag-docs":
+        return (
+          <RoleGuard
+            role={role}
+            allow={["admin"]}
+            title="관리자 전용 화면"
+            desc="RAG 문서 관리는 관리자만 접근할 수 있습니다."
+          >
+            <RagDocumentsPage role={role} />
+          </RoleGuard>
+        );
+
+      case "dashboard":
+        return (
+          <RoleGuard
+            role={role}
+            allow={["admin"]}
+            title="관리자 전용 화면"
+            desc="대시보드는 관리자만 볼 수 있습니다."
+          >
+            <PlaceholderCard title="대시보드" desc="관리자 운영 요약 영역입니다." />
+          </RoleGuard>
+        );
+
+      case "my-conversations":
+        return (
+          <PlaceholderCard
+            title="내 대화"
+            desc="이전 conversation 목록을 여기에 연결할 예정입니다."
+          />
+        );
+
+      case "index-jobs":
+        return (
+          <RoleGuard
+            role={role}
+            allow={["admin"]}
+            title="관리자 전용 화면"
+            desc="인덱싱 작업 화면은 관리자만 접근할 수 있습니다."
+          >
+            <PlaceholderCard
+              title="인덱싱 작업"
+              desc="인덱싱 상태 및 최근 작업 이력을 여기에 표시합니다."
+            />
+          </RoleGuard>
+        );
+
+      case "quality-test":
+        return (
+          <RoleGuard
+            role={role}
+            allow={["admin"]}
+            title="관리자 전용 화면"
+            desc="품질 테스트 화면은 관리자만 접근할 수 있습니다."
+          >
+            <PlaceholderCard
+              title="품질 테스트"
+              desc="검색 결과 / reranker / provider 테스트 화면을 여기에 추가합니다."
+            />
+          </RoleGuard>
+        );
+
+      case "settings":
+        return (
+          <PlaceholderCard
+            title="설정"
+            desc="모델, 스트리밍, 표시 옵션을 여기에 구성할 예정입니다."
+          />
+        );
+
+      default:
+        return <PlaceholderCard title="준비 중" desc="페이지를 준비 중입니다." />;
     }
   };
 
   return (
-    <div style={styles.container}>
-      <h1 style={styles.title}>AI 고객센터 챗봇</h1>
+    <div className="app-shell">
+      <Sidebar menu={menu} visibleMenus={visibleMenus} onMenuChange={setMenu} />
 
-      <div style={styles.chatBox}>
-        {chatList.length === 0 && (
-          <div style={styles.emptyText}>
-            질문을 입력하면 AI가 답변합니다.
-          </div>
-        )}
-
-        {chatList.map((item, index) => (
-          <div
-            key={index}
-            style={
-              item.role === "user" ? styles.userMessageBox : styles.aiMessageBox
-            }
-          >
-            <div style={styles.roleLabel}>
-              {item.role === "user" ? "사용자" : "AI 상담사"}
-            </div>
-            <div>{item.text}</div>
-
-            {item.sources && item.sources.length > 0 && (
-              <div style={styles.sourceBox}>
-                <div style={styles.sourceTitle}>참고 출처</div>
-                {item.sources.map((source, i) => (
-                  <div key={i}>
-                    - {source.source} / chunk {source.chunk_index}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
-
-        {loading && <div style={styles.loading}>답변 생성 중...</div>}
-      </div>
-
-      <div style={styles.inputArea}>
-        <input
-          type="text"
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="질문을 입력하세요"
-          style={styles.input}
-        />
-        <button onClick={sendMessage} style={styles.button}>
-          전송
-        </button>
-      </div>
+      <main className="main-panel">
+        <Topbar role={role} />
+        <section className="page-content">{renderPage()}</section>
+      </main>
     </div>
   );
 }
-
-const styles = {
-  container: {
-    maxWidth: "900px",
-    margin: "0 auto",
-    padding: "40px 20px",
-    fontFamily: "Arial, sans-serif",
-  },
-  title: {
-    textAlign: "center",
-    marginBottom: "20px",
-  },
-  chatBox: {
-    border: "1px solid #ddd",
-    borderRadius: "12px",
-    padding: "20px",
-    minHeight: "500px",
-    backgroundColor: "#fafafa",
-    marginBottom: "20px",
-    overflowY: "auto",
-  },
-  emptyText: {
-    color: "#888",
-    textAlign: "center",
-    marginTop: "200px",
-  },
-  userMessageBox: {
-    backgroundColor: "#dbeafe",
-    padding: "12px",
-    borderRadius: "10px",
-    marginBottom: "12px",
-    marginLeft: "120px",
-  },
-  aiMessageBox: {
-    backgroundColor: "#f3f4f6",
-    padding: "12px",
-    borderRadius: "10px",
-    marginBottom: "12px",
-    marginRight: "120px",
-  },
-  roleLabel: {
-    fontWeight: "bold",
-    marginBottom: "6px",
-  },
-  sourceBox: {
-    marginTop: "10px",
-    fontSize: "13px",
-    color: "#555",
-    borderTop: "1px solid #ddd",
-    paddingTop: "8px",
-  },
-  sourceTitle: {
-    fontWeight: "bold",
-    marginBottom: "4px",
-  },
-  loading: {
-    textAlign: "center",
-    color: "#666",
-    marginTop: "10px",
-  },
-  inputArea: {
-    display: "flex",
-    gap: "10px",
-  },
-  input: {
-    flex: 1,
-    padding: "12px",
-    fontSize: "16px",
-    borderRadius: "8px",
-    border: "1px solid #ccc",
-  },
-  button: {
-    padding: "12px 20px",
-    fontSize: "16px",
-    borderRadius: "8px",
-    border: "none",
-    backgroundColor: "#2563eb",
-    color: "white",
-    cursor: "pointer",
-  },
-};
 
 export default App;
