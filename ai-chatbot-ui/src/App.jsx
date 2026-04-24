@@ -8,11 +8,14 @@ import ChatPage from "./pages/ChatPage";
 import SessionFilesPage from "./pages/SessionFilesPage";
 import RagDocumentsPage from "./pages/RagDocumentsPage";
 import LoginPage from "./pages/LoginPage";
+import MyConversationsPage from "./pages/MyConversationsPage";
 import { useAuth } from "./context/AuthContext";
+import AdminDashboardPage from "./pages/AdminDashboardPage";
 
 function App() {
   const { isAuthenticated, role } = useAuth();
   const [menu, setMenu] = useState("chat");
+  const [activeConversationId, setActiveConversationId] = useState("");
 
   const visibleMenus = useMemo(() => {
     const common = [
@@ -25,6 +28,7 @@ function App() {
       return [
         { key: "dashboard", label: "대시보드" },
         ...common,
+        { key: "my-conversations", label: "내 대화" },
         { key: "rag-docs", label: "RAG 문서 관리" },
         { key: "index-jobs", label: "인덱싱 작업" },
         { key: "quality-test", label: "품질 테스트" },
@@ -43,13 +47,27 @@ function App() {
     return <LoginPage />;
   }
 
+  const openConversation = (conversationId) => {
+    setActiveConversationId(String(conversationId));
+    setMenu("chat");
+  };
+
   const renderPage = () => {
     switch (menu) {
       case "chat":
-        return <ChatPage role={role} />;
+        return (
+          <ChatPage
+            role={role}
+            activeConversationId={activeConversationId}
+            onConversationChange={setActiveConversationId}
+          />
+        );
 
       case "session-files":
         return <SessionFilesPage role={role} />;
+
+      case "my-conversations":
+        return <MyConversationsPage onOpenConversation={openConversation} />;
 
       case "rag-docs":
         return (
@@ -71,16 +89,8 @@ function App() {
             title="관리자 전용 화면"
             desc="대시보드는 관리자만 볼 수 있습니다."
           >
-            <PlaceholderCard title="대시보드" desc="관리자 운영 요약 영역입니다." />
+            <AdminDashboardPage />
           </RoleGuard>
-        );
-
-      case "my-conversations":
-        return (
-          <PlaceholderCard
-            title="내 대화"
-            desc="이전 conversation 목록을 여기에 연결할 예정입니다."
-          />
         );
 
       case "index-jobs":

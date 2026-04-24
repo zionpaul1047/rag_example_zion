@@ -52,6 +52,33 @@ def _cleanup_to_korean(provider: str, answer: str) -> str:
     cleaned = adapter.generate(cleanup_system_prompt, cleanup_user_prompt).strip()
     return cleaned or answer
 
+def _generate_answer(system_prompt: str, user_prompt: str, llm_provider: str):
+    provider = (llm_provider or "auto").lower()
+
+    if provider == "auto":
+        return generate_with_routing(system_prompt, user_prompt)
+
+    adapter = get_llm_adapter(provider)
+    answer = adapter.generate(system_prompt, user_prompt)
+
+    return answer, provider
+
+
+def _stream_answer(system_prompt: str, user_prompt: str, llm_provider: str):
+    provider = (llm_provider or "auto").lower()
+
+    if provider == "auto":
+        yield from stream_with_routing(system_prompt, user_prompt)
+        return
+
+    adapter = get_llm_adapter(provider)
+
+    if hasattr(adapter, "stream"):
+        for token in adapter.stream(system_prompt, user_prompt):
+            yield token, provider
+    else:
+        answer = adapter.generate(system_prompt, user_prompt)
+        yield answer, provider
 
 def _build_prompts(user_message: str, conversation_id: int):
     history = get_recent_messages(conversation_id, limit=6)
@@ -122,7 +149,11 @@ def _build_prompts(user_message: str, conversation_id: int):
     return system_prompt, user_prompt, sources
 
 
-def ask_rag(user_message: str, conversation_id: int | None = None) -> dict:
+def ask_rag(
+    user_message: str,
+    conversation_id: int | None = None,
+    llm_provider: str | None = "auto",
+) -> dict:
     setup_chat_db()
 
     if conversation_id is None:
@@ -133,7 +164,12 @@ def ask_rag(user_message: str, conversation_id: int | None = None) -> dict:
         conversation_id=conversation_id
     )
 
-    answer, used_provider = generate_with_routing(system_prompt, user_prompt)
+    answer, used_provider = _generate_answer(
+        system_prompt,
+        user_prompt,
+        llm_provider or "auto",
+    )
+
     answer = answer.strip()
 
     if used_provider == "ollama" and _needs_korean_cleanup(answer):
@@ -146,11 +182,16 @@ def ask_rag(user_message: str, conversation_id: int | None = None) -> dict:
         "conversation_id": conversation_id,
         "answer": answer,
         "sources": sources,
-        "used_provider": used_provider
+        "used_provider": used_provider,
+        "requested_provider": llm_provider or "auto",
     }
 
 
-def ask_rag_stream(user_message: str, conversation_id: int | None = None):
+def ask_rag_stream(
+    user_message: str,
+    conversation_id: int | None = None,
+    llm_provider: str | None = "auto",
+):
     setup_chat_db()
 
     if conversation_id is None:
@@ -166,14 +207,20 @@ def ask_rag_stream(user_message: str, conversation_id: int | None = None):
     chunks = []
     used_provider = None
 
-    for token, provider in stream_with_routing(system_prompt, user_prompt):
+    for token, provider in _stream_answer(
+        system_prompt,
+        user_prompt,
+        llm_provider or "auto",
+    ):
         used_provider = provider
         chunks.append(token)
+
         yield {
             "type": "token",
             "conversation_id": conversation_id,
             "content": token,
-            "used_provider": provider
+            "used_provider": provider,
+            "requested_provider": llm_provider or "auto",
         }
 
     answer = "".join(chunks).strip()
@@ -188,5 +235,6 @@ def ask_rag_stream(user_message: str, conversation_id: int | None = None):
         "conversation_id": conversation_id,
         "answer": answer,
         "sources": sources,
-        "used_provider": used_provider
+        "used_provider": used_provider,
+        "requested_provider": llm_provider or "auto",
     }
