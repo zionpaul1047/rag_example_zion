@@ -18,6 +18,7 @@ function RagDocumentsPage({ role }) {
     try {
       const res = await fetch(`${API_BASE}/admin/rag-documents`);
       const data = await res.json();
+
       setDocs(Array.isArray(data) ? data : []);
       setMessage("관리 문서 목록을 불러왔습니다.");
     } catch (e) {
@@ -26,43 +27,45 @@ function RagDocumentsPage({ role }) {
   };
 
   useEffect(() => {
-  let ignore = false;
+    let ignore = false;
 
-  async function loadInitialManagedDocs() {
-    try {
-      const res = await fetch(`${API_BASE}/admin/rag-documents`);
-      const data = await res.json();
+    async function loadInitialManagedDocs() {
+      try {
+        const res = await fetch(`${API_BASE}/admin/rag-documents`);
+        const data = await res.json();
 
-      if (!ignore) {
-        setDocs(Array.isArray(data) ? data : []);
-        setMessage("관리 문서 목록을 불러왔습니다.");
-      }
-    } catch (e) {
-      if (!ignore) {
-        setMessage(`목록 조회 오류: ${e.message}`);
+        if (!ignore) {
+          setDocs(Array.isArray(data) ? data : []);
+          setMessage("관리 문서 목록을 불러왔습니다.");
+        }
+      } catch (e) {
+        if (!ignore) {
+          setMessage(`목록 조회 오류: ${e.message}`);
+        }
       }
     }
-  }
 
-  loadInitialManagedDocs();
+    loadInitialManagedDocs();
 
-  return () => {
-    ignore = true;
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const refreshAfterAction = async (messageText) => {
+    setMessage(messageText);
+    await loadManagedDocs();
+    setSelectedDoc(null);
   };
-}, []);
 
   const uploadManagedFile = async () => {
     if (!canManage) {
-      setMessage("관리자만 문서를 업로드할 수 있습니다.");
+      setMessage("관리자만 업로드할 수 있습니다.");
       return;
     }
 
     if (!file) {
       alert("파일을 선택해주세요.");
-      return;
-    }
-    if (!title.trim()) {
-      alert("title을 입력해주세요.");
       return;
     }
 
@@ -76,6 +79,7 @@ function RagDocumentsPage({ role }) {
         method: "POST",
         body: formData,
       });
+
       const data = await res.json();
 
       if (!res.ok) {
@@ -83,92 +87,131 @@ function RagDocumentsPage({ role }) {
         return;
       }
 
-      setMessage(`관리 문서 업로드 성공: ${data.original_name} (id=${data.id})`);
       setFile(null);
-      await loadManagedDocs();
+      await refreshAfterAction(`업로드 완료: ${data.original_name}`);
     } catch (e) {
       setMessage(`업로드 오류: ${e.message}`);
     }
   };
 
   const processManaged = async (documentId) => {
-    if (!canManage) {
-      setMessage("관리자만 문서를 처리할 수 있습니다.");
-      return;
-    }
+    await postAction(
+      `${API_BASE}/admin/rag-documents/${documentId}/process`,
+      "처리"
+    );
+  };
 
-    try {
-      const res = await fetch(`${API_BASE}/admin/rag-documents/${documentId}/process`, {
-        method: "POST",
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        setMessage(`처리 실패: ${JSON.stringify(data)}`);
-        return;
-      }
-
-      setMessage(`문서 처리 완료: document_id=${documentId}`);
-      await loadManagedDocs();
-    } catch (e) {
-      setMessage(`처리 오류: ${e.message}`);
-    }
+  const requestReviewManaged = async (documentId) => {
+    await postAction(
+      `${API_BASE}/admin/rag-documents/${documentId}/request-review`,
+      "검토요청"
+    );
   };
 
   const approveManaged = async (documentId) => {
-    if (!canManage) {
-      setMessage("관리자만 문서를 승인할 수 있습니다.");
-      return;
-    }
-
     const formData = new FormData();
     formData.append("approved_by", approvedBy);
 
-    try {
-      const res = await fetch(`${API_BASE}/admin/rag-documents/${documentId}/approve`, {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        setMessage(`승인 실패: ${JSON.stringify(data)}`);
-        return;
-      }
-
-      setMessage(`문서 승인 완료: document_id=${documentId}`);
-      await loadManagedDocs();
-    } catch (e) {
-      setMessage(`승인 오류: ${e.message}`);
-    }
+    await postAction(
+      `${API_BASE}/admin/rag-documents/${documentId}/approve`,
+      "승인",
+      formData
+    );
   };
 
   const indexManaged = async (documentId) => {
+    await postAction(
+      `${API_BASE}/admin/rag-documents/${documentId}/index`,
+      "인덱싱"
+    );
+  };
+
+  const retireManaged = async (documentId) => {
+    await postAction(
+      `${API_BASE}/admin/rag-documents/${documentId}/retire`,
+      "운영제외"
+    );
+  };
+
+  const rollbackReviewManaged = async (documentId) => {
+    await postAction(
+      `${API_BASE}/admin/rag-documents/${documentId}/rollback-review`,
+      "검토취소"
+    );
+  };
+
+  const rollbackApproveManaged = async (documentId) => {
+    await postAction(
+      `${API_BASE}/admin/rag-documents/${documentId}/rollback-approve`,
+      "승인취소"
+    );
+  };
+
+  const restoreManaged = async (documentId) => {
+    await postAction(
+      `${API_BASE}/admin/rag-documents/${documentId}/restore`,
+      "복구"
+    );
+  };
+
+  const postAction = async (url, actionName, body = undefined) => {
     if (!canManage) {
-      setMessage("관리자만 문서를 인덱싱할 수 있습니다.");
+      setMessage("관리자만 작업할 수 있습니다.");
       return;
     }
 
     try {
-      const res = await fetch(`${API_BASE}/admin/rag-documents/${documentId}/index`, {
+      const res = await fetch(url, {
         method: "POST",
+        body,
       });
+
       const data = await res.json();
 
       if (!res.ok) {
-        setMessage(`인덱싱 실패: ${JSON.stringify(data)}`);
+        setMessage(`${actionName} 실패: ${JSON.stringify(data)}`);
         return;
       }
 
-      setMessage(`문서 인덱싱 완료: document_id=${documentId}`);
-      await loadManagedDocs();
+      await refreshAfterAction(`${actionName} 완료`);
     } catch (e) {
-      setMessage(`인덱싱 오류: ${e.message}`);
+      setMessage(`${actionName} 오류: ${e.message}`);
+    }
+  };
+
+  const deleteManaged = async (documentId) => {
+    if (!canManage) {
+      setMessage("관리자만 삭제할 수 있습니다.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `document_id=${documentId} 문서를 삭제할까요?\n삭제 가능 상태는 draft/parsed/failed입니다.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/admin/rag-documents/${documentId}`, {
+        method: "DELETE",
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setMessage(`삭제 실패: ${JSON.stringify(data)}`);
+        return;
+      }
+
+      await refreshAfterAction(`삭제 완료: document_id=${documentId}`);
+    } catch (e) {
+      setMessage(`삭제 오류: ${e.message}`);
     }
   };
 
   const formatDate = (value) => {
     if (!value) return "-";
+
     try {
       return new Date(value).toLocaleString();
     } catch {
@@ -176,19 +219,35 @@ function RagDocumentsPage({ role }) {
     }
   };
 
+  const normalizeStatus = (status) => String(status || "").toLowerCase();
+
   const renderStatusBadge = (status) => {
-    const normalized = String(status || "").toLowerCase();
+    const normalized = normalizeStatus(status);
 
     let className = "status-badge";
+
     if (normalized === "draft") className += " gray";
     else if (normalized === "parsed") className += " blue";
-    else if (normalized === "approved") className += " purple";
+    else if (normalized === "review") className += " purple";
+    else if (normalized === "approved") className += " indigo";
     else if (normalized === "indexed") className += " green";
+    else if (normalized === "retired") className += " gray";
     else if (normalized === "failed") className += " red";
     else className += " gray";
 
     return <span className={className}>{status || "-"}</span>;
   };
+
+  const canProcess = (status) => ["draft", "failed"].includes(normalizeStatus(status));
+  const canRequestReview = (status) => normalizeStatus(status) === "parsed";
+  const canApprove = (status) => normalizeStatus(status) === "review";
+  const canIndex = (status) => normalizeStatus(status) === "approved";
+  const canRetire = (status) => normalizeStatus(status) === "indexed";
+  const canRollbackReview = (status) => normalizeStatus(status) === "review";
+  const canRollbackApprove = (status) => normalizeStatus(status) === "approved";
+  const canRestore = (status) => normalizeStatus(status) === "retired";
+  const canDelete = (status) =>
+    ["draft", "parsed", "failed"].includes(normalizeStatus(status));
 
   return (
     <div className="page-grid rag-layout">
@@ -243,9 +302,14 @@ function RagDocumentsPage({ role }) {
         </label>
 
         <div className="button-row">
-          <button className="primary-btn" onClick={uploadManagedFile} disabled={!canManage}>
+          <button
+            className="primary-btn"
+            onClick={uploadManagedFile}
+            disabled={!canManage}
+          >
             관리 문서 업로드
           </button>
+
           <button className="secondary-btn" onClick={loadManagedDocs}>
             목록 새로고침
           </button>
@@ -274,6 +338,7 @@ function RagDocumentsPage({ role }) {
                 <th>액션</th>
               </tr>
             </thead>
+
             <tbody>
               {docs.length === 0 ? (
                 <tr>
@@ -285,42 +350,124 @@ function RagDocumentsPage({ role }) {
                 docs.map((doc) => (
                   <tr key={doc.id}>
                     <td>{doc.id}</td>
+
                     <td>
-                      <button className="link-btn" onClick={() => setSelectedDoc(doc)}>
+                      <button
+                        className="link-btn"
+                        onClick={() => setSelectedDoc(doc)}
+                      >
                         {doc.title}
                       </button>
                     </td>
+
                     <td>{doc.category || "-"}</td>
                     <td>{doc.original_name}</td>
                     <td>{renderStatusBadge(doc.status)}</td>
                     <td>{doc.version || "-"}</td>
                     <td>{doc.approved_by || "-"}</td>
+
                     <td>
                       <div className="table-actions">
-                        <button className="mini-btn" onClick={() => setSelectedDoc(doc)}>
+                        <button
+                          className="mini-btn"
+                          onClick={() => setSelectedDoc(doc)}
+                        >
                           보기
                         </button>
-                        <button
-                          className="mini-btn"
-                          onClick={() => processManaged(doc.id)}
-                          disabled={!canManage}
-                        >
-                          처리
-                        </button>
-                        <button
-                          className="mini-btn"
-                          onClick={() => approveManaged(doc.id)}
-                          disabled={!canManage}
-                        >
-                          승인
-                        </button>
-                        <button
-                          className="mini-btn"
-                          onClick={() => indexManaged(doc.id)}
-                          disabled={!canManage}
-                        >
-                          인덱싱
-                        </button>
+
+                        {canProcess(doc.status) && (
+                          <button
+                            className="mini-btn"
+                            onClick={() => processManaged(doc.id)}
+                            disabled={!canManage}
+                          >
+                            처리
+                          </button>
+                        )}
+
+                        {canRequestReview(doc.status) && (
+                          <button
+                            className="mini-btn"
+                            onClick={() => requestReviewManaged(doc.id)}
+                            disabled={!canManage}
+                          >
+                            검토요청
+                          </button>
+                        )}
+
+                        {canRollbackReview(doc.status) && (
+                          <button
+                            className="mini-btn"
+                            onClick={() => rollbackReviewManaged(doc.id)}
+                            disabled={!canManage}
+                          >
+                            검토취소
+                          </button>
+                        )}
+
+                        {canApprove(doc.status) && (
+                          <button
+                            className="mini-btn"
+                            onClick={() => approveManaged(doc.id)}
+                            disabled={!canManage}
+                          >
+                            승인
+                          </button>
+                        )}
+
+                        {canRollbackApprove(doc.status) && (
+                          <button
+                            className="mini-btn"
+                            onClick={() => rollbackApproveManaged(doc.id)}
+                            disabled={!canManage}
+                          >
+                            승인취소
+                          </button>
+                        )}
+
+                        {canIndex(doc.status) && (
+                          <button
+                            className="mini-btn"
+                            onClick={() => indexManaged(doc.id)}
+                            disabled={!canManage}
+                          >
+                            인덱싱
+                          </button>
+                        )}
+
+                        {canRetire(doc.status) && (
+                          <button
+                            className="mini-btn danger"
+                            onClick={() => retireManaged(doc.id)}
+                            disabled={!canManage}
+                          >
+                            운영제외
+                          </button>
+                        )}
+
+                        {canRestore(doc.status) && (
+                          <button
+                            className="mini-btn"
+                            onClick={() => restoreManaged(doc.id)}
+                            disabled={!canManage}
+                          >
+                            복구
+                          </button>
+                        )}
+
+                        {canDelete(doc.status) && (
+                          <button
+                            className="mini-btn danger"
+                            onClick={() => deleteManaged(doc.id)}
+                            disabled={!canManage}
+                          >
+                            삭제
+                          </button>
+                        )}
+
+                        {normalizeStatus(doc.status) === "retired" && (
+                          <span className="muted-text">운영 제외됨</span>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -334,32 +481,60 @@ function RagDocumentsPage({ role }) {
       <div className="card full-width">
         <div className="section-header">
           <h2 className="card__title">문서 상세</h2>
+
           <span className="muted-text">
-            {selectedDoc ? `document_id=${selectedDoc.id}` : "선택된 문서 없음"}
+            {selectedDoc
+              ? `document_id=${selectedDoc.id}`
+              : "선택된 문서 없음"}
           </span>
         </div>
 
         {!selectedDoc ? (
-          <p className="card__desc">목록에서 제목을 누르면 상세 정보를 볼 수 있습니다.</p>
+          <p className="card__desc">
+            목록에서 제목을 누르면 상세 정보를 볼 수 있습니다.
+          </p>
         ) : (
           <div className="detail-grid">
             <div className="detail-meta">
-              <div><strong>제목:</strong> {selectedDoc.title}</div>
-              <div><strong>카테고리:</strong> {selectedDoc.category || "-"}</div>
-              <div><strong>파일명:</strong> {selectedDoc.original_name}</div>
-              <div><strong>저장경로:</strong> {selectedDoc.storage_path}</div>
-              <div><strong>유형:</strong> {selectedDoc.file_category || "-"}</div>
-              <div><strong>상태:</strong> {selectedDoc.status || "-"}</div>
-              <div><strong>버전:</strong> {selectedDoc.version || "-"}</div>
-              <div><strong>승인자:</strong> {selectedDoc.approved_by || "-"}</div>
-              <div><strong>승인일:</strong> {formatDate(selectedDoc.approved_at)}</div>
-              <div><strong>생성일:</strong> {formatDate(selectedDoc.created_at)}</div>
-              <div><strong>수정일:</strong> {formatDate(selectedDoc.updated_at)}</div>
+              <div>
+                <strong>제목:</strong> {selectedDoc.title}
+              </div>
+              <div>
+                <strong>카테고리:</strong> {selectedDoc.category || "-"}
+              </div>
+              <div>
+                <strong>파일명:</strong> {selectedDoc.original_name}
+              </div>
+              <div>
+                <strong>저장경로:</strong> {selectedDoc.storage_path}
+              </div>
+              <div>
+                <strong>유형:</strong> {selectedDoc.file_category || "-"}
+              </div>
+              <div>
+                <strong>상태:</strong> {selectedDoc.status || "-"}
+              </div>
+              <div>
+                <strong>버전:</strong> {selectedDoc.version || "-"}
+              </div>
+              <div>
+                <strong>승인자:</strong> {selectedDoc.approved_by || "-"}
+              </div>
+              <div>
+                <strong>승인일:</strong> {formatDate(selectedDoc.approved_at)}
+              </div>
+              <div>
+                <strong>생성일:</strong> {formatDate(selectedDoc.created_at)}
+              </div>
+              <div>
+                <strong>수정일:</strong> {formatDate(selectedDoc.updated_at)}
+              </div>
             </div>
 
             <div className="detail-panels">
               <label className="field">
                 <span className="field__label">parsed_text</span>
+
                 <textarea
                   className="field__textarea"
                   rows={18}

@@ -1,19 +1,26 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { AuthContext } from "./auth-context";
 
 const API_BASE = "http://127.0.0.1:8000";
 
-const AuthContext = createContext(null);
+function AuthProvider({ children }) {
+  const [token, setToken] = useState(
+    () => localStorage.getItem("access_token") || ""
+  );
 
-export function AuthProvider({ children }) {
-  const [token, setToken] = useState(() => localStorage.getItem("access_token") || "");
   const [user, setUser] = useState(() => {
     const saved = localStorage.getItem("user");
     return saved ? JSON.parse(saved) : null;
   });
+
   const [loading, setLoading] = useState(false);
 
-  const isAuthenticated = Boolean(token && user);
-  const role = user?.role || "guest";
+  const logout = () => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("user");
+    setToken("");
+    setUser(null);
+  };
 
   useEffect(() => {
     if (!token) return;
@@ -82,35 +89,20 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("user");
-    setToken("");
-    setUser(null);
-  };
-
   const value = useMemo(
     () => ({
       token,
       user,
-      role,
+      role: user?.role || "guest",
       loading,
-      isAuthenticated,
+      isAuthenticated: Boolean(token && user),
       login,
       logout,
     }),
-    [token, user, role, loading, isAuthenticated]
+    [token, user, loading]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function useAuth() {
-  const context = useContext(AuthContext);
-
-  if (!context) {
-    throw new Error("useAuth는 AuthProvider 내부에서만 사용할 수 있습니다.");
-  }
-
-  return context;
-}
+export default AuthProvider;

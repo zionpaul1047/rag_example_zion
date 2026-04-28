@@ -61,6 +61,18 @@ def setup_document_registry():
     )
     """)
 
+    cur.execute("PRAGMA table_info(managed_documents)")
+    columns = [row[1] for row in cur.fetchall()]
+
+    if "document_key" not in columns:
+        cur.execute("ALTER TABLE managed_documents ADD COLUMN document_key TEXT")
+
+    if "is_active" not in columns:
+        cur.execute("ALTER TABLE managed_documents ADD COLUMN is_active INTEGER DEFAULT 0")
+
+    if "parent_document_id" not in columns:
+        cur.execute("ALTER TABLE managed_documents ADD COLUMN parent_document_id INTEGER")
+
     conn.commit()
     conn.close()
 
@@ -133,6 +145,7 @@ def create_managed_document(
     cur = conn.cursor()
 
     now = datetime.utcnow().isoformat()
+    document_key = f"{title}:{category or ''}"
 
     cur.execute(
         """
@@ -140,9 +153,9 @@ def create_managed_document(
             title, category, original_name, saved_name, storage_path,
             mime_type, file_extension, file_category, file_size,
             parsed_text, version, status, approved_by, approved_at,
-            created_at, updated_at
+            created_at, updated_at, document_key, is_active, parent_document_id
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             title,
@@ -160,7 +173,10 @@ def create_managed_document(
             None,
             None,
             now,
-            now
+            now,
+            document_key,
+            0,
+            None,
         )
     )
 
@@ -381,3 +397,140 @@ def mark_managed_document_indexed(document_id: int):
 
     conn.commit()
     conn.close()
+
+def delete_managed_document(document_id: int):
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        DELETE FROM managed_documents
+        WHERE id = ?
+        """,
+        (document_id,)
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def activate_managed_document(document_id: int):
+    document = get_managed_document(document_id)
+
+    if not document:
+        raise ValueError(f"관리 문서를 찾을 수 없습니다: {document_id}")
+
+    document_key = document.get("document_key")
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    now = datetime.utcnow().isoformat()
+
+    if document_key:
+        cur.execute(
+            """
+            UPDATE managed_documents
+            SET is_active = 0,
+                status = CASE
+                    WHEN id != ? AND status = 'indexed' THEN 'retired'
+                    ELSE status
+                END,
+                updated_at = ?
+            WHERE document_key = ?
+            """,
+            (document_id, now, document_key)
+        )
+
+    cur.execute(
+        """
+        UPDATE managed_documents
+        SET is_active = 1,
+            status = 'indexed',
+            updated_at = ?
+        WHERE id = ?
+        """,
+        (now, document_id)
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def _parse_version_number(version: str | None) -> int:
+    if not version:
+        return 1
+
+    cleaned = str(version).lower().replace("v", "").strip()
+
+    try:
+        return int(cleaned)
+    except ValueError:
+        return 1
+
+
+def create_managed_document_version(
+    parent_document_id: int,
+    original_name: str,
+    saved_name: str,
+    storage_path: str,
+    mime_type: str,
+    file_extension: str,
+    file_category: str,
+    file_size: int,
+) -> int:
+    parent = get_managed_document(parent_document_id)
+
+    if not parent:
+        raise ValueError(f"기준 문서를 찾을 수 없습니다: {parent_document_id}")
+
+    title = parent["title"]
+    category = parent["category"]
+    document_key = parent.get("document_key") or f"{title}:{category or ''}"
+
+    current_version_no = _parse_version_number(parent.get("version"))
+    next_version = f"v{current_version_no + 1}"
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    now = datetime.utcnow().isoformat()
+
+    cur.execute(
+        """
+        INSERT INTO managed_documents (
+            title, category, original_name, saved_name, storage_path,
+            mime_type, file_extension, file_category, file_size,
+            parsed_text, version, status, approved_by, approved_at,
+            created_at, updated_at, document_key, is_active, parent_document_id
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            title,
+            category,
+            original_name,
+            saved_name,
+            storage_path,
+            mime_type,
+            file_extension,
+            file_category,
+            file_size,
+            None,
+            next_version,
+            "draft",
+            None,
+            None,
+            now,
+            now,
+            document_key,
+            0,
+            parent_document_id,
+        ),
+    )
+
+    doc_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+
+    return doc_id

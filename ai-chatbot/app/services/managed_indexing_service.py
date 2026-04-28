@@ -5,7 +5,7 @@ from elasticsearch import Elasticsearch, helpers
 from app.core.settings import settings
 from app.services.document_registry_service import (
     get_managed_document,
-    mark_managed_document_indexed
+    activate_managed_document
 )
 from app.services.chunker import split_documents
 from app.services.embedding_service import embed_texts
@@ -79,7 +79,7 @@ def index_managed_document(document_id: int) -> dict:
     if actions:
         helpers.bulk(es, actions)
 
-    mark_managed_document_indexed(document_id)
+    activate_managed_document(document_id)
 
     return {
         "document_id": document_id,

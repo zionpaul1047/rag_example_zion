@@ -9,7 +9,7 @@ import SessionFilesPage from "./pages/SessionFilesPage";
 import RagDocumentsPage from "./pages/RagDocumentsPage";
 import LoginPage from "./pages/LoginPage";
 import MyConversationsPage from "./pages/MyConversationsPage";
-import { useAuth } from "./context/AuthContext";
+import { useAuth } from "./hooks/useAuth";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
 
 function App() {

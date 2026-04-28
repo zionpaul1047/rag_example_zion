@@ -14,6 +14,11 @@ from app.services.chat_history_service import (
 from app.services.document_registry_service import get_parsed_session_documents
 from app.services.llm_routing_service import generate_with_routing, stream_with_routing
 from app.services.llm_adapters.factory import get_llm_adapter
+from app.services.rag_pipeline.pipeline import (
+    RagPipelineDeps,
+    run_rag_pipeline,
+    stream_rag_pipeline,
+)
 
 
 def _needs_korean_cleanup(text: str) -> bool:
@@ -156,43 +161,27 @@ def ask_rag(
     conversation_id: int | None = None,
     llm_provider: str | None = "auto",
 ) -> dict:
-    setup_chat_db()
-
-    is_new_conversation = conversation_id is None
-
-    if conversation_id is None:
-        conversation_id = create_conversation()
-
-    if is_new_conversation:
-        title = generate_title(user_message, llm_provider or "auto")
-        update_conversation_title(conversation_id, title)
-
-    system_prompt, user_prompt, sources = _build_prompts(
-        user_message=user_message,
-        conversation_id=conversation_id
+    deps = RagPipelineDeps(
+        setup_chat_db=setup_chat_db,
+        create_conversation=create_conversation,
+        add_message=add_message,
+        update_conversation_title=update_conversation_title,
+        generate_title=generate_title,
+        build_prompts=_build_prompts,
+        generate_answer=_generate_answer,
+        stream_answer=_stream_answer,
+        needs_korean_cleanup=_needs_korean_cleanup,
+        cleanup_to_korean=_cleanup_to_korean,
     )
 
-    answer, used_provider = _generate_answer(
-        system_prompt,
-        user_prompt,
-        llm_provider or "auto",
-    )
-
-    answer = answer.strip()
-
-    if used_provider == "ollama" and _needs_korean_cleanup(answer):
-        answer = _cleanup_to_korean(used_provider, answer)
-
-    add_message(conversation_id, "user", user_message)
-    add_message(conversation_id, "assistant", answer)
-
-    return {
+    state = {
+        "user_message": user_message,
         "conversation_id": conversation_id,
-        "answer": answer,
-        "sources": sources,
-        "used_provider": used_provider,
-        "requested_provider": llm_provider or "auto",
+        "llm_provider": llm_provider or "auto",
+        "retry_count": 0,
     }
+
+    return run_rag_pipeline(state, deps)
 
 
 def ask_rag_stream(
@@ -200,55 +189,24 @@ def ask_rag_stream(
     conversation_id: int | None = None,
     llm_provider: str | None = "auto",
 ):
-    setup_chat_db()
-
-    is_new_conversation = conversation_id is None
-
-    if conversation_id is None:
-        conversation_id = create_conversation()
-
-    if is_new_conversation:
-        title = generate_title(user_message, llm_provider or "auto")
-        update_conversation_title(conversation_id, title)
-
-    system_prompt, user_prompt, sources = _build_prompts(
-        user_message=user_message,
-        conversation_id=conversation_id
+    deps = RagPipelineDeps(
+        setup_chat_db=setup_chat_db,
+        create_conversation=create_conversation,
+        add_message=add_message,
+        update_conversation_title=update_conversation_title,
+        generate_title=generate_title,
+        build_prompts=_build_prompts,
+        generate_answer=_generate_answer,
+        stream_answer=_stream_answer,
+        needs_korean_cleanup=_needs_korean_cleanup,
+        cleanup_to_korean=_cleanup_to_korean,
     )
 
-    add_message(conversation_id, "user", user_message)
-
-    chunks = []
-    used_provider = None
-
-    for token, provider in _stream_answer(
-        system_prompt,
-        user_prompt,
-        llm_provider or "auto",
-    ):
-        used_provider = provider
-        chunks.append(token)
-
-        yield {
-            "type": "token",
-            "conversation_id": conversation_id,
-            "content": token,
-            "used_provider": provider,
-            "requested_provider": llm_provider or "auto",
-        }
-
-    answer = "".join(chunks).strip()
-
-    if used_provider == "ollama" and _needs_korean_cleanup(answer):
-        answer = _cleanup_to_korean(used_provider, answer)
-
-    add_message(conversation_id, "assistant", answer)
-
-    yield {
-        "type": "done",
+    state = {
+        "user_message": user_message,
         "conversation_id": conversation_id,
-        "answer": answer,
-        "sources": sources,
-        "used_provider": used_provider,
-        "requested_provider": llm_provider or "auto",
+        "llm_provider": llm_provider or "auto",
+        "retry_count": 0,
     }
+
+    yield from stream_rag_pipeline(state, deps)
