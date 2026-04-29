@@ -54,7 +54,7 @@ def index_managed_document(document_id: int) -> dict:
                 VALUES (%s, %s, %s, %s)
                 """,
                 (
-                    f"[managed]{chunk['source']}",
+                    f"[managed:{document_id}]{chunk['source']}",
                     chunk["chunk_index"],
                     chunk["content"],
                     embedding
@@ -70,7 +70,7 @@ def index_managed_document(document_id: int) -> dict:
         actions.append({
             "_index": INDEX_NAME,
             "_source": {
-                "source": f"[managed]{chunk['source']}",
+                "source": f"[managed:{document_id}]{chunk['source']}",
                 "chunk_index": chunk["chunk_index"],
                 "content": chunk["content"]
             }

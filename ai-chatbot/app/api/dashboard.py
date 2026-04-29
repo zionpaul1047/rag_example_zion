@@ -1,29 +1,147 @@
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter
+import sqlite3
+from pathlib import Path
+from datetime import datetime
 
-from app.services.auth_service import get_user_from_token
-from app.services.dashboard_service import get_dashboard_summary
+from app.core.settings import settings
 
-router = APIRouter(prefix="/admin/dashboard", tags=["dashboard"])
+router = APIRouter()
+
+DB_PATH = Path("data/chat_history.db")
+DOC_DB_PATH = Path(settings.APP_SQLITE_PATH)
 
 
-def _require_admin(authorization: str | None):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="인증 토큰이 없습니다.")
+def get_chat_conn():
+    return sqlite3.connect(DB_PATH)
 
-    token = authorization.replace("Bearer ", "", 1)
 
+def get_doc_conn():
+    return sqlite3.connect(DOC_DB_PATH)
+
+
+@router.get("/admin/dashboard")
+def get_dashboard():
+    result = {
+        "conversation_count": 0,
+        "today_conversation_count": 0,
+        "message_count": 0,
+        "managed_doc_count": 0,
+        "active_doc_count": 0,
+        "retired_doc_count": 0,
+        "recent_conversations": [],
+        "recent_documents": [],
+        "status_summary": {},
+    }
+
+    # 채팅 DB
     try:
-        user = get_user_from_token(token)
-    except ValueError as e:
-        raise HTTPException(status_code=401, detail=str(e)) from e
+        conn = get_chat_conn()
+        cur = conn.cursor()
 
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="관리자 권한이 필요합니다.")
+        cur.execute("SELECT COUNT(*) FROM conversations")
+        result["conversation_count"] = cur.fetchone()[0]
 
-    return user
+        today = datetime.utcnow().strftime("%Y-%m-%d")
 
+        cur.execute(
+            """
+            SELECT COUNT(*)
+            FROM conversations
+            WHERE substr(created_at,1,10)=?
+            """,
+            (today,),
+        )
+        result["today_conversation_count"] = cur.fetchone()[0]
 
-@router.get("/summary")
-def dashboard_summary(authorization: str | None = Header(default=None)):
-    _require_admin(authorization)
-    return get_dashboard_summary()
+        cur.execute("SELECT COUNT(*) FROM messages")
+        result["message_count"] = cur.fetchone()[0]
+
+        cur.execute(
+            """
+            SELECT id, created_at
+            FROM conversations
+            ORDER BY id DESC
+            LIMIT 5
+            """
+        )
+
+        rows = cur.fetchall()
+
+        for row in rows:
+            result["recent_conversations"].append(
+                {
+                    "id": row[0],
+                    "created_at": row[1],
+                }
+            )
+
+        conn.close()
+
+    except Exception:
+        pass
+
+    # 문서 DB
+    try:
+        conn = get_doc_conn()
+        cur = conn.cursor()
+
+        cur.execute("SELECT COUNT(*) FROM managed_documents")
+        result["managed_doc_count"] = cur.fetchone()[0]
+
+        cur.execute(
+            """
+            SELECT COUNT(*)
+            FROM managed_documents
+            WHERE is_active=1
+            """
+        )
+        result["active_doc_count"] = cur.fetchone()[0]
+
+        cur.execute(
+            """
+            SELECT COUNT(*)
+            FROM managed_documents
+            WHERE status='retired'
+            """
+        )
+        result["retired_doc_count"] = cur.fetchone()[0]
+
+        cur.execute(
+            """
+            SELECT status, COUNT(*)
+            FROM managed_documents
+            GROUP BY status
+            """
+        )
+
+        for row in cur.fetchall():
+            result["status_summary"][row[0]] = row[1]
+
+        cur.execute(
+            """
+            SELECT id, title, version, status, created_at
+            FROM managed_documents
+            ORDER BY id DESC
+            LIMIT 5
+            """
+        )
+
+        rows = cur.fetchall()
+
+        for row in rows:
+            result["recent_documents"].append(
+                {
+                    "id": row[0],
+                    "title": row[1],
+                    "version": row[2],
+                    "status": row[3],
+                    "created_at": row[4],
+                }
+            )
+
+        conn.close()
+
+    except Exception:
+        pass
+
+    return result

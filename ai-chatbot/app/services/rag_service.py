@@ -9,9 +9,12 @@ from app.services.chat_history_service import (
     create_conversation,
     add_message,
     get_recent_messages,
-    update_conversation_title
+    update_conversation_title,
 )
-from app.services.document_registry_service import get_parsed_session_documents
+from app.services.document_registry_service import (
+    get_parsed_session_documents,
+    get_active_managed_document_sources,
+)
 from app.services.llm_routing_service import generate_with_routing, stream_with_routing
 from app.services.llm_adapters.factory import get_llm_adapter
 from app.services.rag_pipeline.pipeline import (
@@ -59,6 +62,7 @@ def _cleanup_to_korean(provider: str, answer: str) -> str:
     cleaned = adapter.generate(cleanup_system_prompt, cleanup_user_prompt).strip()
     return cleaned or answer
 
+
 def _generate_answer(system_prompt: str, user_prompt: str, llm_provider: str):
     provider = (llm_provider or "auto").lower()
 
@@ -87,13 +91,36 @@ def _stream_answer(system_prompt: str, user_prompt: str, llm_provider: str):
         answer = adapter.generate(system_prompt, user_prompt)
         yield answer, provider
 
+
+def _filter_inactive_managed_documents(documents: list[dict]) -> list[dict]:
+    active_sources = get_active_managed_document_sources()
+
+    if not active_sources:
+        return documents
+
+    filtered = []
+
+    for item in documents:
+        source_name = str(item.get("source", ""))
+
+        if source_name.startswith("[managed:") or source_name.startswith("[managed]"):
+            if source_name in active_sources:
+                filtered.append(item)
+            continue
+
+        filtered.append(item)
+
+    return filtered
+
+
 def _build_prompts(user_message: str, conversation_id: int):
     history = get_recent_messages(conversation_id, limit=6)
 
     session_docs = get_parsed_session_documents(conversation_id)
+
     kb_results = hybrid_search(
         user_message,
-        limit=settings.TOP_K_RETRIEVAL
+        limit=settings.TOP_K_RETRIEVAL,
     )
 
     merged_candidates = []
@@ -103,22 +130,32 @@ def _build_prompts(user_message: str, conversation_id: int):
     reranked = rerank_documents(
         query=user_message,
         documents=merged_candidates,
-        top_n=settings.TOP_N_RERANK
+        top_n=settings.TOP_N_RERANK,
     )
+
+    reranked = _filter_inactive_managed_documents(reranked)
 
     context_blocks = []
     sources = []
 
     for item in reranked:
         context_blocks.append(
-            f"[출처:{item['source']} / chunk:{item.get('chunk_index', 0)} / type:{item.get('search_type', 'kb')}]\n{item['content']}"
+            (
+                f"[출처:{item['source']} / "
+                f"chunk:{item.get('chunk_index', 0)} / "
+                f"type:{item.get('search_type', 'kb')}]\n"
+                f"{item['content']}"
+            )
         )
-        sources.append({
-            "source": item["source"],
-            "chunk_index": item.get("chunk_index", 0),
-            "search_type": item.get("search_type", "kb"),
-            "rerank_score": item.get("rerank_score")
-        })
+
+        sources.append(
+            {
+                "source": item["source"],
+                "chunk_index": item.get("chunk_index", 0),
+                "search_type": item.get("search_type", "kb"),
+                "rerank_score": item.get("rerank_score"),
+            }
+        )
 
     context_text = "\n\n".join(context_blocks)
 
@@ -140,6 +177,7 @@ def _build_prompts(user_message: str, conversation_id: int):
 7. 문서에 영어 용어가 있더라도 설명은 한국어로 작성하세요.
 8. 답변은 먼저 핵심 해결 방법부터 말하고, 필요하면 추가 확인 사항을 덧붙이세요.
 9. 사용자가 업로드한 세션 문서가 있으면 우선 참고하고, 부족하면 공식 KB를 참고하세요.
+10. 운영 제외된 관리 문서는 참고하지 마세요.
 """.strip()
 
     user_prompt = f"""

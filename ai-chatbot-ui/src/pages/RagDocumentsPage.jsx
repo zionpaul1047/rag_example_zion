@@ -10,6 +10,9 @@ function RagDocumentsPage({ role }) {
   const [category, setCategory] = useState("tv");
   const [approvedBy, setApprovedBy] = useState("admin");
 
+  const [versionFile, setVersionFile] = useState(null);
+  const [versionParentId, setVersionParentId] = useState("");
+
   const [docs, setDocs] = useState([]);
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [message, setMessage] = useState("");
@@ -94,11 +97,53 @@ function RagDocumentsPage({ role }) {
     }
   };
 
+  const uploadManagedVersion = async () => {
+    if (!canManage) {
+      setMessage("관리자만 새 버전을 업로드할 수 있습니다.");
+      return;
+    }
+
+    if (!versionParentId) {
+      alert("기준 문서를 선택해주세요.");
+      return;
+    }
+
+    if (!versionFile) {
+      alert("새 버전 파일을 선택해주세요.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", versionFile);
+
+    try {
+      const res = await fetch(
+        `${API_BASE}/admin/rag-documents/${versionParentId}/versions/upload`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setMessage(`새 버전 업로드 실패: ${JSON.stringify(data)}`);
+        return;
+      }
+
+      setVersionFile(null);
+      setVersionParentId("");
+      await refreshAfterAction(
+        `새 버전 업로드 완료: ${data.title} ${data.version} (id=${data.id})`
+      );
+    } catch (e) {
+      setMessage(`새 버전 업로드 오류: ${e.message}`);
+    }
+  };
+
   const processManaged = async (documentId) => {
-    await postAction(
-      `${API_BASE}/admin/rag-documents/${documentId}/process`,
-      "처리"
-    );
+    await postAction(`${API_BASE}/admin/rag-documents/${documentId}/process`, "처리");
   };
 
   const requestReviewManaged = async (documentId) => {
@@ -120,17 +165,11 @@ function RagDocumentsPage({ role }) {
   };
 
   const indexManaged = async (documentId) => {
-    await postAction(
-      `${API_BASE}/admin/rag-documents/${documentId}/index`,
-      "인덱싱"
-    );
+    await postAction(`${API_BASE}/admin/rag-documents/${documentId}/index`, "인덱싱");
   };
 
   const retireManaged = async (documentId) => {
-    await postAction(
-      `${API_BASE}/admin/rag-documents/${documentId}/retire`,
-      "운영제외"
-    );
+    await postAction(`${API_BASE}/admin/rag-documents/${documentId}/retire`, "운영제외");
   };
 
   const rollbackReviewManaged = async (documentId) => {
@@ -148,10 +187,7 @@ function RagDocumentsPage({ role }) {
   };
 
   const restoreManaged = async (documentId) => {
-    await postAction(
-      `${API_BASE}/admin/rag-documents/${documentId}/restore`,
-      "복구"
-    );
+    await postAction(`${API_BASE}/admin/rag-documents/${documentId}/restore`, "복구");
   };
 
   const postAction = async (url, actionName, body = undefined) => {
@@ -318,6 +354,58 @@ function RagDocumentsPage({ role }) {
         <div className="inline-message">{message}</div>
       </div>
 
+      <div className="card">
+        <div className="section-header">
+          <h2 className="card__title">새 버전 업로드</h2>
+          <span className={canManage ? "role-pill admin" : "role-pill user"}>
+            {canManage ? "버전 관리" : "읽기 전용"}
+          </span>
+        </div>
+
+        <label className="field">
+          <span className="field__label">기준 문서</span>
+          <select
+            className="field__input"
+            value={versionParentId}
+            onChange={(e) => setVersionParentId(e.target.value)}
+            disabled={!canManage}
+          >
+            <option value="">기준 문서를 선택하세요</option>
+            {docs.map((doc) => (
+              <option key={doc.id} value={doc.id}>
+                ID {doc.id} · {doc.title} · {doc.version || "v?"} · {doc.status}
+                {doc.is_active ? " · ACTIVE" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="field">
+          <span className="field__label">새 버전 파일</span>
+          <input
+            className="field__input"
+            type="file"
+            onChange={(e) => setVersionFile(e.target.files?.[0] || null)}
+            disabled={!canManage}
+          />
+        </label>
+
+        <div className="button-row">
+          <button
+            className="primary-btn"
+            onClick={uploadManagedVersion}
+            disabled={!canManage}
+          >
+            새 버전 업로드
+          </button>
+        </div>
+
+        <p className="card__desc">
+          새 버전은 draft 상태로 생성됩니다. 이후 처리 → 검토요청 → 승인 → 인덱싱을
+          진행하면 새 버전이 ACTIVE가 되고 기존 ACTIVE 문서는 retired 처리됩니다.
+        </p>
+      </div>
+
       <div className="card full-width">
         <div className="section-header">
           <h2 className="card__title">관리 문서 목록</h2>
@@ -363,7 +451,12 @@ function RagDocumentsPage({ role }) {
                     <td>{doc.category || "-"}</td>
                     <td>{doc.original_name}</td>
                     <td>{renderStatusBadge(doc.status)}</td>
-                    <td>{doc.version || "-"}</td>
+
+                    <td>
+                      <strong>{doc.version || "-"}</strong>
+                      {doc.is_active ? <span className="active-badge">ACTIVE</span> : null}
+                    </td>
+
                     <td>{doc.approved_by || "-"}</td>
 
                     <td>
@@ -483,9 +576,7 @@ function RagDocumentsPage({ role }) {
           <h2 className="card__title">문서 상세</h2>
 
           <span className="muted-text">
-            {selectedDoc
-              ? `document_id=${selectedDoc.id}`
-              : "선택된 문서 없음"}
+            {selectedDoc ? `document_id=${selectedDoc.id}` : "선택된 문서 없음"}
           </span>
         </div>
 
@@ -516,6 +607,17 @@ function RagDocumentsPage({ role }) {
               </div>
               <div>
                 <strong>버전:</strong> {selectedDoc.version || "-"}
+              </div>
+              <div>
+                <strong>문서키:</strong> {selectedDoc.document_key || "-"}
+              </div>
+              <div>
+                <strong>활성여부:</strong>{" "}
+                {selectedDoc.is_active ? "ACTIVE" : "inactive"}
+              </div>
+              <div>
+                <strong>상위문서ID:</strong>{" "}
+                {selectedDoc.parent_document_id || "-"}
               </div>
               <div>
                 <strong>승인자:</strong> {selectedDoc.approved_by || "-"}

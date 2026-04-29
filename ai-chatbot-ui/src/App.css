@@ -879,3 +879,33 @@
   font-weight: 900;
   border: 1px solid #a7f3d0;
 }
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.stat-card {
+  background: white;
+  border-radius: 14px;
+  padding: 18px;
+  border: 1px solid #e5e7eb;
+}
+
+.stat-card strong {
+  font-size: 28px;
+}
+
+.stat-card.green {
+  background: #ecfdf5;
+}
+
+.stat-card.gray {
+  background: #f3f4f6;
+}
+
+.list-row {
+  padding: 8px 0;
+  border-bottom: 1px solid #eee;
+}

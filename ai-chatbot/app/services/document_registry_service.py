@@ -534,3 +534,29 @@ def create_managed_document_version(
     conn.close()
 
     return doc_id
+
+
+def get_active_managed_document_sources() -> set[str]:
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT id, original_name
+        FROM managed_documents
+        WHERE status = 'indexed'
+          AND is_active = 1
+        """
+    )
+
+    rows = cur.fetchall()
+    conn.close()
+
+    sources = set()
+
+    for row in rows:
+        original_name = row["original_name"]
+        sources.add(original_name)
+        sources.add(f"[managed:{row['id']}]{original_name}")
+
+    return sources
