@@ -10,7 +10,7 @@ Git Huburl :  https://github.com/zionpaul1047/rag_example_zion
 
 # 2. 인프라 구성
 
-![인프라.png](attachment:760e65a1-749e-4b31-9c53-9833bc0a0535:인프라.png)
+<img width="2098" height="795" alt="Image" src="https://github.com/user-attachments/assets/b2fb395b-d59f-4601-ab8f-a4ca9ea4a78d" />
 
 현재 로컬 기준:
 
@@ -39,19 +39,19 @@ local-elasticsearch   Elasticsearch 8.x
 
 ## 4-1. 문서 인덱싱 흐름
 
-![프로세스.png](attachment:6a95f81b-434b-4473-82b5-abfc7ce7790a:프로세스.png)
+<img width="2137" height="427" alt="Image" src="https://github.com/user-attachments/assets/c676407e-1030-466f-ac1b-7eeb3ce7f998" />
 
 ---
 
 ## 4-2. 질문 응답 RAG 흐름
 
-![rag프로세스.png](attachment:8c8d49f4-e92a-4efa-b00b-651ea969b3d7:rag프로세스.png)
+<img width="3760" height="1910" alt="Image" src="https://github.com/user-attachments/assets/496d8e8f-fef7-4563-9756-311cd7608be3" />
 
 ---
 
 ## 4-3. 승인 기반 문서 라이프사이클
 
-![문서관리.png](attachment:1809f3cb-38f1-4046-b901-d60ffa5d4607:문서관리.png)
+<img width="2137" height="427" alt="Image" src="https://github.com/user-attachments/assets/677db66a-b471-4adb-9e54-52761f54ae39" />
 
 ---
 
