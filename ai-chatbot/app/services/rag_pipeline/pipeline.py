@@ -58,7 +58,7 @@ def _build_and_evaluate(
         conversation_id,
     )
 
-    eval_result = evaluate_docs(sources)
+    eval_result = evaluate_docs(sources, state["user_message"])
 
     state["system_prompt"] = system_prompt
     state["user_prompt"] = user_prompt
@@ -95,7 +95,7 @@ def _maybe_retry_retrieve(
         conversation_id,
     )
 
-    eval_result = evaluate_docs(sources)
+    eval_result = evaluate_docs(sources, state["user_message"])
 
     state["system_prompt"] = system_prompt
     state["user_prompt"] = user_prompt

@@ -22,6 +22,10 @@ from app.services.rag_pipeline.pipeline import (
     run_rag_pipeline,
     stream_rag_pipeline,
 )
+from app.services.rag_pipeline.langgraph_pipeline import (
+    run_langgraph_rag_pipeline,
+    run_langgraph_rag_stream_pipeline,
+)
 
 
 def _needs_korean_cleanup(text: str) -> bool:
@@ -219,7 +223,7 @@ def ask_rag(
         "retry_count": 0,
     }
 
-    return run_rag_pipeline(state, deps)
+    return run_langgraph_rag_pipeline(state, deps)
 
 
 def ask_rag_stream(
@@ -247,4 +251,4 @@ def ask_rag_stream(
         "retry_count": 0,
     }
 
-    yield from stream_rag_pipeline(state, deps)
+    yield from run_langgraph_rag_stream_pipeline(state, deps)

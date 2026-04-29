@@ -22,4 +22,5 @@ class RagState(TypedDict, total=False):
     answer: str
     retry_count: int
 
+    graph_trace: list[str]
     metadata: dict[str, Any]
