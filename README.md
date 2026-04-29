@@ -4,7 +4,7 @@ Git Huburl :  https://github.com/zionpaul1047/rag_example_zion
 
 ---
 
-![arch.png](attachment:b157ffe2-c230-43f4-990f-e7f14d67a4bd:arch.png)
+<img width="2035" height="2803" alt="Image" src="https://github.com/user-attachments/assets/59eaedfd-a19a-4faf-9330-8192c9fa36c5" />
 
 ---
 
