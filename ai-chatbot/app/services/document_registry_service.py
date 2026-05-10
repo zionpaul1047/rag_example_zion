@@ -187,21 +187,31 @@ def create_managed_document(
     return doc_id
 
 
-def list_session_documents(conversation_id: int | None = None) -> list[dict]:
+def list_session_documents(
+    conversation_id: int | None = None,
+    user_id: str | None = None,
+) -> list[dict]:
     conn = get_conn()
     cur = conn.cursor()
 
-    if conversation_id is None:
-        cur.execute("""
-            SELECT * FROM session_documents
-            ORDER BY id DESC
-        """)
-    else:
-        cur.execute("""
-            SELECT * FROM session_documents
-            WHERE conversation_id = ?
-            ORDER BY id DESC
-        """, (conversation_id,))
+    filters = []
+    params = []
+
+    if conversation_id is not None:
+        filters.append("conversation_id = ?")
+        params.append(conversation_id)
+
+    if user_id is not None:
+        filters.append("(user_id = ? OR user_id IS NULL)")
+        params.append(user_id)
+
+    where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+
+    cur.execute(f"""
+        SELECT * FROM session_documents
+        {where_clause}
+        ORDER BY id DESC
+    """, params)
 
     rows = cur.fetchall()
     conn.close()
@@ -224,14 +234,24 @@ def list_managed_documents() -> list[dict]:
     return [dict(row) for row in rows]
 
 
-def get_session_document(document_id: int) -> dict | None:
+def get_session_document(
+    document_id: int,
+    user_id: str | None = None,
+) -> dict | None:
     conn = get_conn()
     cur = conn.cursor()
 
-    cur.execute("""
-        SELECT * FROM session_documents
-        WHERE id = ?
-    """, (document_id,))
+    if user_id is None:
+        cur.execute("""
+            SELECT * FROM session_documents
+            WHERE id = ?
+        """, (document_id,))
+    else:
+        cur.execute("""
+            SELECT * FROM session_documents
+            WHERE id = ?
+              AND (user_id = ? OR user_id IS NULL)
+        """, (document_id, user_id))
 
     row = cur.fetchone()
     conn.close()
@@ -252,6 +272,22 @@ def get_managed_document(document_id: int) -> dict | None:
     conn.close()
 
     return dict(row) if row else None
+
+
+def delete_session_document(document_id: int):
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        DELETE FROM session_documents
+        WHERE id = ?
+        """,
+        (document_id,)
+    )
+
+    conn.commit()
+    conn.close()
 
 
 def approve_managed_document(document_id: int, approved_by: str | None = None):
@@ -318,19 +354,30 @@ def update_managed_document_processing(
     conn.commit()
     conn.close()
 
-def get_parsed_session_documents(conversation_id: int) -> list[dict]:
+def get_parsed_session_documents(
+    conversation_id: int,
+    user_id: str | None = None,
+) -> list[dict]:
     conn = get_conn()
     cur = conn.cursor()
 
+    params = [conversation_id]
+    user_filter = ""
+
+    if user_id is not None:
+        user_filter = "AND (user_id = ? OR user_id IS NULL)"
+        params.append(user_id)
+
     cur.execute(
-        """
+        f"""
         SELECT id, original_name, parsed_text, ocr_text, vision_summary
         FROM session_documents
         WHERE conversation_id = ?
           AND doc_status = 'parsed'
+          {user_filter}
         ORDER BY id DESC
         """,
-        (conversation_id,)
+        params
     )
 
     rows = cur.fetchall()
@@ -455,6 +502,28 @@ def activate_managed_document(document_id: int):
 
     conn.commit()
     conn.close()
+
+
+def get_latest_retired_managed_document(document_key: str) -> dict | None:
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT *
+        FROM managed_documents
+        WHERE document_key = ?
+          AND status = 'retired'
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (document_key,),
+    )
+
+    row = cur.fetchone()
+    conn.close()
+
+    return dict(row) if row else None
 
 
 def _parse_version_number(version: str | None) -> int:

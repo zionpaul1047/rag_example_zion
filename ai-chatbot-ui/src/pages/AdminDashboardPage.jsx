@@ -1,23 +1,36 @@
 import { useEffect, useState } from "react";
+import { useAuth } from "../hooks/useAuth";
 
 const API_BASE = "http://127.0.0.1:8000";
 
 function AdminDashboardPage() {
+  const { token } = useAuth();
   const [data, setData] = useState(null);
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     let ignore = false;
 
     async function loadDashboard() {
       try {
-        const res = await fetch(`${API_BASE}/admin/dashboard`);
+        const res = await fetch(`${API_BASE}/admin/dashboard`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
         const json = await res.json();
 
         if (!ignore) {
+          if (!res.ok) {
+            setMessage(`대시보드 조회 실패: ${JSON.stringify(json)}`);
+            return;
+          }
+
           setData(json);
+          setMessage("");
         }
       } catch (e) {
-        console.error(e);
+        if (!ignore) {
+          setMessage(`대시보드 조회 오류: ${e.message}`);
+        }
       }
     }
 
@@ -26,15 +39,16 @@ function AdminDashboardPage() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [token]);
 
+  if (message) return <div className="card">{message}</div>;
   if (!data) return <div className="card">불러오는 중...</div>;
 
   return (
     <div className="page-grid">
       <div className="stats-grid">
         <div className="stat-card">
-          <h3>총 대화</h3>
+          <h3>전체 대화</h3>
           <strong>{data.conversation_count}</strong>
         </div>
 
@@ -44,7 +58,7 @@ function AdminDashboardPage() {
         </div>
 
         <div className="stat-card">
-          <h3>총 메시지</h3>
+          <h3>전체 메시지</h3>
           <strong>{data.message_count}</strong>
         </div>
 
@@ -84,9 +98,9 @@ function AdminDashboardPage() {
 
       <div className="card">
         <h2>문서 상태 분포</h2>
-        {Object.entries(data.status_summary).map(([k, v]) => (
-          <div key={k} className="list-row">
-            {k}: {v}
+        {Object.entries(data.status_summary).map(([key, value]) => (
+          <div key={key} className="list-row">
+            {key}: {value}
           </div>
         ))}
       </div>

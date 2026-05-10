@@ -45,6 +45,7 @@ def _get_bool(name: str, default: bool) -> bool:
 class Settings:
     APP_NAME: str = _get_str("APP_NAME", "AI Chatbot")
     APP_ENV: str = _get_str("APP_ENV", "local")
+    LOG_LEVEL: str = _get_str("LOG_LEVEL", "INFO")
 
     POSTGRES_HOST: str = _get_str("POSTGRES_HOST", "localhost")
     POSTGRES_PORT: int = _get_int("POSTGRES_PORT", 5432)

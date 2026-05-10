@@ -52,6 +52,12 @@ function App() {
     setMenu("chat");
   };
 
+  const handleConversationDeleted = (conversationId) => {
+    if (String(activeConversationId) === String(conversationId)) {
+      setActiveConversationId("");
+    }
+  };
+
   const renderPage = () => {
     switch (menu) {
       case "chat":
@@ -67,7 +73,13 @@ function App() {
         return <SessionFilesPage role={role} />;
 
       case "my-conversations":
-        return <MyConversationsPage onOpenConversation={openConversation} />;
+        return (
+          <MyConversationsPage
+            activeConversationId={activeConversationId}
+            onOpenConversation={openConversation}
+            onConversationDeleted={handleConversationDeleted}
+          />
+        );
 
       case "rag-docs":
         return (

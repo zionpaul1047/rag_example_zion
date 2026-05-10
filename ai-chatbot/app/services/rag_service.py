@@ -17,14 +17,16 @@ from app.services.document_registry_service import (
 )
 from app.services.llm_routing_service import generate_with_routing, stream_with_routing
 from app.services.llm_adapters.factory import get_llm_adapter
-from app.services.rag_pipeline.pipeline import (
-    RagPipelineDeps,
-    run_rag_pipeline,
-    stream_rag_pipeline,
-)
+from app.services.rag_pipeline.pipeline import RagPipelineDeps
 from app.services.rag_pipeline.langgraph_pipeline import (
     run_langgraph_rag_pipeline,
     run_langgraph_rag_stream_pipeline,
+)
+from app.services.rag_pipeline.prompts import (
+    KOREAN_CLEANUP_SYSTEM_PROMPT,
+    RAG_SYSTEM_PROMPT,
+    build_cleanup_user_prompt,
+    build_rag_user_prompt,
 )
 
 
@@ -45,25 +47,11 @@ def _needs_korean_cleanup(text: str) -> bool:
 
 
 def _cleanup_to_korean(provider: str, answer: str) -> str:
-    cleanup_system_prompt = """
-당신은 한국어 문장 교정기입니다.
-
-규칙:
-1. 반드시 자연스러운 한국어로만 다시 작성하세요.
-2. 영어, 일본어, 중국어, 태국어를 섞지 마세요.
-3. 의미를 바꾸지 말고 표현만 한국어로 정리하세요.
-4. 불필요하게 장황하게 쓰지 마세요.
-""".strip()
-
-    cleanup_user_prompt = f"""
-다음 답변을 자연스러운 한국어만 사용해서 다시 작성하세요.
-
-원문:
-{answer}
-""".strip()
-
     adapter = get_llm_adapter(provider)
-    cleaned = adapter.generate(cleanup_system_prompt, cleanup_user_prompt).strip()
+    cleaned = adapter.generate(
+        KOREAN_CLEANUP_SYSTEM_PROMPT,
+        build_cleanup_user_prompt(answer),
+    ).strip()
     return cleaned or answer
 
 
@@ -117,10 +105,48 @@ def _filter_inactive_managed_documents(documents: list[dict]) -> list[dict]:
     return filtered
 
 
-def _build_prompts(user_message: str, conversation_id: int):
+def _build_retrieval_debug(
+    *,
+    history: list[dict],
+    session_docs: list[dict],
+    kb_results: list[dict],
+    merged_candidates: list[dict],
+    reranked_count: int,
+    filtered_reranked: list[dict],
+    sources: list[dict],
+) -> dict:
+    return {
+        "history_message_count": len(history),
+        "session_document_count": len(session_docs),
+        "kb_result_count": len(kb_results),
+        "merged_candidate_count": len(merged_candidates),
+        "top_k_retrieval": settings.TOP_K_RETRIEVAL,
+        "top_n_rerank": settings.TOP_N_RERANK,
+        "reranked_count": reranked_count,
+        "filtered_reranked_count": len(filtered_reranked),
+        "inactive_managed_filtered_count": reranked_count - len(filtered_reranked),
+        "source_count": len(sources),
+        "top_sources": sources[:5],
+    }
+
+
+def _build_content_preview(content: str, limit: int = 300) -> str:
+    normalized = " ".join(str(content or "").split())
+
+    if len(normalized) <= limit:
+        return normalized
+
+    return f"{normalized[:limit].rstrip()}..."
+
+
+def _build_prompts(
+    user_message: str,
+    conversation_id: int,
+    username: str | None = None,
+):
     history = get_recent_messages(conversation_id, limit=6)
 
-    session_docs = get_parsed_session_documents(conversation_id)
+    session_docs = get_parsed_session_documents(conversation_id, user_id=username)
 
     kb_results = hybrid_search(
         user_message,
@@ -137,18 +163,20 @@ def _build_prompts(user_message: str, conversation_id: int):
         top_n=settings.TOP_N_RERANK,
     )
 
+    reranked_count = len(reranked)
     reranked = _filter_inactive_managed_documents(reranked)
 
     context_blocks = []
     sources = []
 
     for item in reranked:
+        content = item["content"]
         context_blocks.append(
             (
                 f"[출처:{item['source']} / "
                 f"chunk:{item.get('chunk_index', 0)} / "
                 f"type:{item.get('search_type', 'kb')}]\n"
-                f"{item['content']}"
+                f"{content}"
             )
         )
 
@@ -158,6 +186,7 @@ def _build_prompts(user_message: str, conversation_id: int):
                 "chunk_index": item.get("chunk_index", 0),
                 "search_type": item.get("search_type", "kb"),
                 "rerank_score": item.get("rerank_score"),
+                "content_preview": _build_content_preview(content),
             }
         )
 
@@ -168,48 +197,44 @@ def _build_prompts(user_message: str, conversation_id: int):
         prefix = "사용자" if msg["role"] == "user" else "AI"
         history_text += f"{prefix}: {msg['content']}\n"
 
-    system_prompt = """
-당신은 삼성전자 고객센터 AI 상담사입니다.
+    user_prompt = build_rag_user_prompt(
+        history_text=history_text,
+        user_message=user_message,
+        context_text=context_text,
+    )
 
-규칙:
-1. 제공된 참고 문서 중심으로만 답변하세요.
-2. 이전 대화 맥락이 있으면 자연스럽게 이어서 답하세요.
-3. 문서에 없는 내용은 추측하지 마세요.
-4. 간결하고 친절하게 답변하세요.
-5. 반드시 한국어로만 답변하세요.
-6. 영어, 일본어, 중국어, 태국어 등 다른 언어를 섞지 마세요.
-7. 문서에 영어 용어가 있더라도 설명은 한국어로 작성하세요.
-8. 답변은 먼저 핵심 해결 방법부터 말하고, 필요하면 추가 확인 사항을 덧붙이세요.
-9. 사용자가 업로드한 세션 문서가 있으면 우선 참고하고, 부족하면 공식 KB를 참고하세요.
-10. 운영 제외된 관리 문서는 참고하지 마세요.
-""".strip()
+    retrieval_debug = _build_retrieval_debug(
+        history=history,
+        session_docs=session_docs,
+        kb_results=kb_results,
+        merged_candidates=merged_candidates,
+        reranked_count=reranked_count,
+        filtered_reranked=reranked,
+        sources=sources,
+    )
 
-    user_prompt = f"""
-이전 대화:
-{history_text}
-
-현재 질문:
-{user_message}
-
-참고 문서:
-{context_text}
-""".strip()
-
-    return system_prompt, user_prompt, sources
+    return RAG_SYSTEM_PROMPT, user_prompt, sources, {
+        "retrieval_debug": retrieval_debug,
+    }
 
 
 def ask_rag(
     user_message: str,
     conversation_id: int | None = None,
     llm_provider: str | None = "auto",
+    username: str | None = None,
 ) -> dict:
     deps = RagPipelineDeps(
         setup_chat_db=setup_chat_db,
-        create_conversation=create_conversation,
+        create_conversation=lambda: create_conversation(username),
         add_message=add_message,
         update_conversation_title=update_conversation_title,
         generate_title=generate_title,
-        build_prompts=_build_prompts,
+        build_prompts=lambda message, conversation_id: _build_prompts(
+            message,
+            conversation_id,
+            username=username,
+        ),
         generate_answer=_generate_answer,
         stream_answer=_stream_answer,
         needs_korean_cleanup=_needs_korean_cleanup,
@@ -230,14 +255,19 @@ def ask_rag_stream(
     user_message: str,
     conversation_id: int | None = None,
     llm_provider: str | None = "auto",
+    username: str | None = None,
 ):
     deps = RagPipelineDeps(
         setup_chat_db=setup_chat_db,
-        create_conversation=create_conversation,
+        create_conversation=lambda: create_conversation(username),
         add_message=add_message,
         update_conversation_title=update_conversation_title,
         generate_title=generate_title,
-        build_prompts=_build_prompts,
+        build_prompts=lambda message, conversation_id: _build_prompts(
+            message,
+            conversation_id,
+            username=username,
+        ),
         generate_answer=_generate_answer,
         stream_answer=_stream_answer,
         needs_korean_cleanup=_needs_korean_cleanup,

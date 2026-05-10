@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Any
 
 from app.services.rag_pipeline.query_rewriter import rewrite_query
 from app.services.rag_pipeline.state import RagState
@@ -9,22 +9,59 @@ from app.services.rag_pipeline.evaluator import (
     build_retry_query,
 )
 
+PromptResult = (
+    tuple[str, str, list[dict]]
+    | tuple[str, str, list[dict], dict[str, Any]]
+)
+
+
+def unpack_prompt_result(
+    prompt_result: PromptResult,
+) -> tuple[str, str, list[dict], dict[str, Any]]:
+    if len(prompt_result) == 3:
+        system_prompt, user_prompt, sources = prompt_result
+        return system_prompt, user_prompt, sources, {}
+
+    system_prompt, user_prompt, sources, metadata = prompt_result
+    return system_prompt, user_prompt, sources, metadata
+
 
 @dataclass
 class RagPipelineDeps:
     setup_chat_db: Callable[[], None]
     create_conversation: Callable[[], int]
-    add_message: Callable[[int, str, str], None]
+    add_message: Callable[[int, str, str, dict[str, Any] | None], None]
     update_conversation_title: Callable[[int, str], None]
 
     generate_title: Callable[[str, str], str]
-    build_prompts: Callable[[str, int], tuple[str, str, list[dict]]]
+    build_prompts: Callable[[str, int], PromptResult]
 
     generate_answer: Callable[[str, str, str], tuple[str, str]]
     stream_answer: Callable[[str, str, str], Iterable[tuple[str, str]]]
 
     needs_korean_cleanup: Callable[[str], bool]
     cleanup_to_korean: Callable[[str, str], str]
+
+
+def _build_message_metadata(
+    state: RagState,
+    *,
+    used_provider: str | None = None,
+    requested_provider: str | None = None,
+    sources: list[dict] | None = None,
+) -> dict:
+    metadata = dict(state.get("metadata", {}))
+    metadata.update({
+        "sources": sources if sources is not None else state.get("sources", []),
+        "used_provider": used_provider or state.get("used_provider"),
+        "requested_provider": requested_provider
+        or state.get("requested_provider")
+        or state.get("llm_provider", "auto"),
+        "eval_result": state.get("eval_result"),
+        "retry_count": state.get("retry_count", 0),
+        "graph": "pipeline",
+    })
+    return metadata
 
 
 def _prepare_conversation(state: RagState, deps: RagPipelineDeps) -> tuple[int, bool]:
@@ -53,9 +90,11 @@ def _build_and_evaluate(
     query_message: str,
     conversation_id: int,
 ):
-    system_prompt, user_prompt, sources = deps.build_prompts(
-        query_message,
-        conversation_id,
+    system_prompt, user_prompt, sources, prompt_metadata = unpack_prompt_result(
+        deps.build_prompts(
+            query_message,
+            conversation_id,
+        )
     )
 
     eval_result = evaluate_docs(sources, state["user_message"])
@@ -64,6 +103,10 @@ def _build_and_evaluate(
     state["user_prompt"] = user_prompt
     state["sources"] = sources
     state["eval_result"] = eval_result
+    state["metadata"] = {
+        **state.get("metadata", {}),
+        **prompt_metadata,
+    }
 
     return system_prompt, user_prompt, sources, eval_result
 
@@ -90,9 +133,11 @@ def _maybe_retry_retrieve(
         "retry_query": retry_query,
     }
 
-    system_prompt, user_prompt, sources = deps.build_prompts(
-        retry_query,
-        conversation_id,
+    system_prompt, user_prompt, sources, prompt_metadata = unpack_prompt_result(
+        deps.build_prompts(
+            retry_query,
+            conversation_id,
+        )
     )
 
     eval_result = evaluate_docs(sources, state["user_message"])
@@ -101,6 +146,10 @@ def _maybe_retry_retrieve(
     state["user_prompt"] = user_prompt
     state["sources"] = sources
     state["eval_result"] = eval_result
+    state["metadata"] = {
+        **state.get("metadata", {}),
+        **prompt_metadata,
+    }
 
 
 def run_rag_pipeline(state: RagState, deps: RagPipelineDeps) -> dict:
@@ -158,7 +207,16 @@ def run_rag_pipeline(state: RagState, deps: RagPipelineDeps) -> dict:
     state["requested_provider"] = llm_provider
 
     deps.add_message(conversation_id, "user", user_message)
-    deps.add_message(conversation_id, "assistant", answer)
+    deps.add_message(
+        conversation_id,
+        "assistant",
+        answer,
+        _build_message_metadata(
+            state,
+            used_provider=used_provider,
+            requested_provider=llm_provider,
+        ),
+    )
 
     return {
         "conversation_id": conversation_id,
@@ -212,7 +270,17 @@ def stream_rag_pipeline(state: RagState, deps: RagPipelineDeps):
     if eval_result == "no_docs":
         answer = build_no_docs_answer(user_message)
 
-        deps.add_message(conversation_id, "assistant", answer)
+        deps.add_message(
+            conversation_id,
+            "assistant",
+            answer,
+            _build_message_metadata(
+                state,
+                used_provider="system",
+                requested_provider=llm_provider,
+                sources=[],
+            ),
+        )
 
         yield {
             "type": "done",
@@ -254,7 +322,16 @@ def stream_rag_pipeline(state: RagState, deps: RagPipelineDeps):
     if used_provider == "ollama" and deps.needs_korean_cleanup(answer):
         answer = deps.cleanup_to_korean(used_provider, answer)
 
-    deps.add_message(conversation_id, "assistant", answer)
+    deps.add_message(
+        conversation_id,
+        "assistant",
+        answer,
+        _build_message_metadata(
+            state,
+            used_provider=used_provider,
+            requested_provider=llm_provider,
+        ),
+    )
 
     yield {
         "type": "done",

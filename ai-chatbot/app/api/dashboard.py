@@ -1,9 +1,11 @@
-from fastapi import APIRouter
 import sqlite3
 from pathlib import Path
 from datetime import datetime
 
+from fastapi import APIRouter, Depends
+
 from app.core.settings import settings
+from app.api.dependencies import require_admin_user
 
 router = APIRouter()
 
@@ -20,7 +22,7 @@ def get_doc_conn():
 
 
 @router.get("/admin/dashboard")
-def get_dashboard():
+def get_dashboard(_admin: dict = Depends(require_admin_user)):
     result = {
         "conversation_count": 0,
         "today_conversation_count": 0,
@@ -33,7 +35,7 @@ def get_dashboard():
         "status_summary": {},
     }
 
-    # 채팅 DB
+    # Chat DB
     try:
         conn = get_chat_conn()
         cur = conn.cursor()
@@ -80,7 +82,7 @@ def get_dashboard():
     except Exception:
         pass
 
-    # 문서 DB
+    # Document DB
     try:
         conn = get_doc_conn()
         cur = conn.cursor()

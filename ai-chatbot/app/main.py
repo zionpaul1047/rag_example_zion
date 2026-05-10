@@ -8,6 +8,9 @@ from app.api.conversation import router as conversation_router
 from app.services.chat_history_service import setup_chat_db
 from app.services.document_registry_service import setup_document_registry
 from app.api.dashboard import router as dashboard_router
+from app.core.logging_config import configure_logging
+
+configure_logging()
 
 app = FastAPI(title="AI Chatbot")
 

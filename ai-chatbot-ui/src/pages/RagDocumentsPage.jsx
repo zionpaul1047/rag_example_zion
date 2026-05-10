@@ -1,9 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "../hooks/useAuth";
 
 const API_BASE = "http://127.0.0.1:8000";
 
 function RagDocumentsPage({ role }) {
+  const { token } = useAuth();
   const canManage = role === "admin";
+  const authHeaders = useMemo(
+    () => (token ? { Authorization: `Bearer ${token}` } : {}),
+    [token]
+  );
 
   const [file, setFile] = useState(null);
   const [title, setTitle] = useState("삼성 TV FAQ");
@@ -19,7 +25,9 @@ function RagDocumentsPage({ role }) {
 
   const loadManagedDocs = async () => {
     try {
-      const res = await fetch(`${API_BASE}/admin/rag-documents`);
+      const res = await fetch(`${API_BASE}/admin/rag-documents`, {
+        headers: authHeaders,
+      });
       const data = await res.json();
 
       setDocs(Array.isArray(data) ? data : []);
@@ -34,7 +42,9 @@ function RagDocumentsPage({ role }) {
 
     async function loadInitialManagedDocs() {
       try {
-        const res = await fetch(`${API_BASE}/admin/rag-documents`);
+        const res = await fetch(`${API_BASE}/admin/rag-documents`, {
+          headers: authHeaders,
+        });
         const data = await res.json();
 
         if (!ignore) {
@@ -53,7 +63,7 @@ function RagDocumentsPage({ role }) {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [authHeaders]);
 
   const refreshAfterAction = async (messageText) => {
     setMessage(messageText);
@@ -80,6 +90,7 @@ function RagDocumentsPage({ role }) {
     try {
       const res = await fetch(`${API_BASE}/admin/rag-documents/upload`, {
         method: "POST",
+        headers: authHeaders,
         body: formData,
       });
 
@@ -121,6 +132,7 @@ function RagDocumentsPage({ role }) {
         `${API_BASE}/admin/rag-documents/${versionParentId}/versions/upload`,
         {
           method: "POST",
+          headers: authHeaders,
           body: formData,
         }
       );
@@ -199,6 +211,7 @@ function RagDocumentsPage({ role }) {
     try {
       const res = await fetch(url, {
         method: "POST",
+        headers: authHeaders,
         body,
       });
 
@@ -230,6 +243,7 @@ function RagDocumentsPage({ role }) {
     try {
       const res = await fetch(`${API_BASE}/admin/rag-documents/${documentId}`, {
         method: "DELETE",
+        headers: authHeaders,
       });
 
       const data = await res.json();
@@ -242,6 +256,44 @@ function RagDocumentsPage({ role }) {
       await refreshAfterAction(`삭제 완료: document_id=${documentId}`);
     } catch (e) {
       setMessage(`삭제 오류: ${e.message}`);
+    }
+  };
+
+  const forceDeleteManaged = async (documentId, status) => {
+    if (!canManage) {
+      setMessage("관리자만 완전 삭제할 수 있습니다.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      [
+        `document_id=${documentId} 문서를 완전히 삭제할까요?`,
+        `현재 상태: ${status || "-"}`,
+        "DB, 업로드 파일, 검색 인덱스의 관리 문서 조각이 삭제됩니다.",
+        "이 작업은 되돌릴 수 없습니다.",
+      ].join("\n")
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/admin/rag-documents/${documentId}/force`, {
+        method: "DELETE",
+        headers: authHeaders,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setMessage(`완전 삭제 실패: ${JSON.stringify(data)}`);
+        return;
+      }
+
+      await refreshAfterAction(
+        `완전 삭제 완료: document_id=${documentId}, vector=${data.vector_deleted}, keyword=${data.keyword_deleted}`
+      );
+    } catch (e) {
+      setMessage(`완전 삭제 오류: ${e.message}`);
     }
   };
 
@@ -555,6 +607,16 @@ function RagDocumentsPage({ role }) {
                             disabled={!canManage}
                           >
                             삭제
+                          </button>
+                        )}
+
+                        {!canDelete(doc.status) && (
+                          <button
+                            className="mini-btn danger"
+                            onClick={() => forceDeleteManaged(doc.id, doc.status)}
+                            disabled={!canManage}
+                          >
+                            완전 삭제
                           </button>
                         )}
 

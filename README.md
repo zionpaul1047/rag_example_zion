@@ -1,5 +1,9 @@
 Git Huburl :  https://github.com/zionpaul1047/rag_example_zion
 
+# RAG 검증 문서
+
+- [RAG 수동 검증 체크리스트](docs/rag_manual_verification_checklist.md)
+
 # 1. 전체 흐름도
 
 ---

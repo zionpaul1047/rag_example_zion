@@ -1,10 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "../hooks/useAuth";
 
 const API_BASE = "http://127.0.0.1:8000";
 
 function SessionFilesPage() {
+  const { token, user } = useAuth();
+  const authHeaders = useMemo(
+    () => (token ? { Authorization: `Bearer ${token}` } : {}),
+    [token]
+  );
+
   const [conversationId, setConversationId] = useState("19");
-  const [userId, setUserId] = useState("zion");
   const [file, setFile] = useState(null);
 
   const [files, setFiles] = useState([]);
@@ -14,9 +20,18 @@ function SessionFilesPage() {
   const loadSessionFiles = async () => {
     try {
       const res = await fetch(
-        `${API_BASE}/session-files?conversation_id=${conversationId}`
+        `${API_BASE}/session-files?conversation_id=${conversationId}`,
+        {
+          headers: authHeaders,
+        }
       );
       const data = await res.json();
+
+      if (!res.ok) {
+        setMessage(`목록 조회 실패: ${JSON.stringify(data)}`);
+        return;
+      }
+
       setFiles(Array.isArray(data) ? data : []);
       setMessage("세션 파일 목록을 불러왔습니다.");
     } catch (e) {
@@ -25,32 +40,40 @@ function SessionFilesPage() {
   };
 
   useEffect(() => {
-  let ignore = false;
+    let ignore = false;
 
-  async function loadInitialSessionFiles() {
-    try {
-      const res = await fetch(
-        `${API_BASE}/session-files?conversation_id=${conversationId}`
-      );
-      const data = await res.json();
+    async function loadInitialSessionFiles() {
+      try {
+        const res = await fetch(
+          `${API_BASE}/session-files?conversation_id=${conversationId}`,
+          {
+            headers: authHeaders,
+          }
+        );
+        const data = await res.json();
 
-      if (!ignore) {
-        setFiles(Array.isArray(data) ? data : []);
-        setMessage("세션 파일 목록을 불러왔습니다.");
-      }
-    } catch (e) {
-      if (!ignore) {
-        setMessage(`목록 조회 오류: ${e.message}`);
+        if (!ignore) {
+          if (!res.ok) {
+            setMessage(`목록 조회 실패: ${JSON.stringify(data)}`);
+            return;
+          }
+
+          setFiles(Array.isArray(data) ? data : []);
+          setMessage("세션 파일 목록을 불러왔습니다.");
+        }
+      } catch (e) {
+        if (!ignore) {
+          setMessage(`목록 조회 오류: ${e.message}`);
+        }
       }
     }
-  }
 
-  loadInitialSessionFiles();
+    loadInitialSessionFiles();
 
-  return () => {
-    ignore = true;
-  };
-}, [conversationId]);
+    return () => {
+      ignore = true;
+    };
+  }, [conversationId, authHeaders]);
 
   const uploadSessionFile = async () => {
     if (!file) {
@@ -61,11 +84,11 @@ function SessionFilesPage() {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("conversation_id", conversationId);
-    formData.append("user_id", userId);
 
     try {
       const res = await fetch(`${API_BASE}/session-files/upload`, {
         method: "POST",
+        headers: authHeaders,
         body: formData,
       });
       const data = await res.json();
@@ -87,6 +110,7 @@ function SessionFilesPage() {
     try {
       const res = await fetch(`${API_BASE}/session-files/${documentId}/process`, {
         method: "POST",
+        headers: authHeaders,
       });
       const data = await res.json();
 
@@ -104,6 +128,34 @@ function SessionFilesPage() {
       }
     } catch (e) {
       setMessage(`재처리 오류: ${e.message}`);
+    }
+  };
+
+  const deleteSessionFile = async (documentId) => {
+    const confirmed = window.confirm(`document_id=${documentId} 세션 파일을 삭제할까요?`);
+
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/session-files/${documentId}`, {
+        method: "DELETE",
+        headers: authHeaders,
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setMessage(`삭제 실패: ${JSON.stringify(data)}`);
+        return;
+      }
+
+      setMessage(`삭제 완료: document_id=${documentId}`);
+      setFiles((prev) => prev.filter((item) => item.id !== documentId));
+
+      if (selectedItem?.id === documentId) {
+        setSelectedItem(null);
+      }
+    } catch (e) {
+      setMessage(`삭제 오류: ${e.message}`);
     }
   };
 
@@ -144,11 +196,11 @@ function SessionFilesPage() {
           </label>
 
           <label className="field">
-            <span className="field__label">user_id</span>
+            <span className="field__label">사용자</span>
             <input
               className="field__input"
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
+              value={user?.username || ""}
+              readOnly
             />
           </label>
         </div>
@@ -227,6 +279,12 @@ function SessionFilesPage() {
                           onClick={() => reprocessSessionFile(item.id)}
                         >
                           재처리
+                        </button>
+                        <button
+                          className="mini-btn danger"
+                          onClick={() => deleteSessionFile(item.id)}
+                        >
+                          삭제
                         </button>
                       </div>
                     </td>

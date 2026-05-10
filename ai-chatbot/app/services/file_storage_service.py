@@ -23,6 +23,34 @@ def ensure_directories():
     Path(settings.MANAGED_UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
 
 
+def _is_relative_to(path: Path, parent: Path) -> bool:
+    try:
+        path.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
+def delete_stored_file(storage_path: str, scope: str) -> bool:
+    if scope == "session":
+        allowed_dir = Path(settings.SESSION_UPLOAD_DIR).resolve()
+    elif scope == "managed":
+        allowed_dir = Path(settings.MANAGED_UPLOAD_DIR).resolve()
+    else:
+        raise ValueError(f"지원하지 않는 scope 입니다: {scope}")
+
+    path = Path(storage_path).resolve()
+
+    if not _is_relative_to(path, allowed_dir):
+        raise ValueError(f"업로드 디렉터리 밖의 파일은 삭제할 수 없습니다: {storage_path}")
+
+    if not path.exists():
+        return False
+
+    path.unlink()
+    return True
+
+
 def get_extension(filename: str) -> str:
     return Path(filename).suffix.lower()
 

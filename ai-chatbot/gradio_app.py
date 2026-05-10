@@ -3,6 +3,8 @@ import os
 import requests
 import gradio as gr
 
+from app.services.conversation_service import delete_conversation
+
 API_URL = "http://127.0.0.1:8000/chat"
 BASE_URL = "http://127.0.0.1:8000"
 
@@ -89,6 +91,18 @@ def ask_stream(message: str, conversation_id_value):
 
 def clear_chat():
     return "", "", "", ""
+
+
+def delete_current_conversation(conversation_id_value):
+    if not str(conversation_id_value).strip():
+        return "", "", "", "삭제할 conversation_id가 없습니다."
+
+    result = delete_conversation(int(conversation_id_value))
+
+    if not result["deleted"]:
+        return "", conversation_id_value, "", "대화를 찾을 수 없습니다."
+
+    return "", "", "", "대화를 삭제했습니다."
 
 
 def _safe_json(response: requests.Response):
@@ -261,6 +275,7 @@ with gr.Blocks(title="AI Chatbot UI") as demo:
             normal_btn = gr.Button("일반 응답")
             stream_btn = gr.Button("스트리밍 응답")
             clear_btn = gr.Button("초기화")
+            delete_conversation_btn = gr.Button("현재 대화 삭제")
 
         answer = gr.Textbox(label="답변", lines=14)
         sources = gr.Textbox(label="출처", lines=8)
@@ -280,6 +295,12 @@ with gr.Blocks(title="AI Chatbot UI") as demo:
         clear_btn.click(
             fn=clear_chat,
             inputs=[],
+            outputs=[message, conversation_id, answer, sources]
+        )
+
+        delete_conversation_btn.click(
+            fn=delete_current_conversation,
+            inputs=[conversation_id],
             outputs=[message, conversation_id, answer, sources]
         )
 

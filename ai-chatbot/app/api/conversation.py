@@ -4,6 +4,7 @@ from app.services.auth_service import get_user_from_token
 from app.services.conversation_service import (
     list_conversations,
     get_conversation_messages,
+    delete_conversation,
 )
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
@@ -32,5 +33,19 @@ def get_messages(
     conversation_id: int,
     authorization: str | None = Header(default=None),
 ):
-    _get_current_user(authorization)
-    return get_conversation_messages(conversation_id)
+    user = _get_current_user(authorization)
+    return get_conversation_messages(conversation_id, user["username"])
+
+
+@router.delete("/{conversation_id}")
+def delete_conversation_by_id(
+    conversation_id: int,
+    authorization: str | None = Header(default=None),
+):
+    user = _get_current_user(authorization)
+    result = delete_conversation(conversation_id, user["username"])
+
+    if not result["deleted"]:
+        raise HTTPException(status_code=404, detail="대화를 찾을 수 없습니다.")
+
+    return result

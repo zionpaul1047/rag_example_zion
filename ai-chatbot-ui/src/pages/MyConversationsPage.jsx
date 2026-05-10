@@ -3,7 +3,11 @@ import { useAuth } from "../hooks/useAuth";
 
 const API_BASE = "http://127.0.0.1:8000";
 
-function MyConversationsPage({ onOpenConversation }) {
+function MyConversationsPage({
+  activeConversationId,
+  onOpenConversation,
+  onConversationDeleted,
+}) {
   const { token } = useAuth();
 
   const [conversations, setConversations] = useState([]);
@@ -11,12 +15,14 @@ function MyConversationsPage({ onOpenConversation }) {
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [statusMessage, setStatusMessage] = useState("");
 
+  const authHeaders = {
+    Authorization: `Bearer ${token}`,
+  };
+
   const loadConversations = async () => {
     try {
       const res = await fetch(`${API_BASE}/conversations`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: authHeaders,
       });
 
       const data = await res.json();
@@ -38,9 +44,7 @@ function MyConversationsPage({ onOpenConversation }) {
 
     try {
       const res = await fetch(`${API_BASE}/conversations/${conversation.id}/messages`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: authHeaders,
       });
 
       const data = await res.json();
@@ -54,6 +58,43 @@ function MyConversationsPage({ onOpenConversation }) {
       setStatusMessage(`conversation_id=${conversation.id} 메시지를 불러왔습니다.`);
     } catch (e) {
       setStatusMessage(`메시지 조회 오류: ${e.message}`);
+    }
+  };
+
+  const deleteConversation = async (conversation, event) => {
+    event?.stopPropagation();
+
+    if (!window.confirm(`conversation_id=${conversation.id} 대화를 삭제할까요?`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/conversations/${conversation.id}`, {
+        method: "DELETE",
+        headers: authHeaders,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setStatusMessage(`대화 삭제 실패: ${JSON.stringify(data)}`);
+        return;
+      }
+
+      setConversations((prev) => prev.filter((item) => item.id !== conversation.id));
+
+      if (selectedConversation?.id === conversation.id) {
+        setSelectedConversation(null);
+        setMessages([]);
+      }
+
+      if (onConversationDeleted) {
+        onConversationDeleted(conversation.id);
+      }
+
+      setStatusMessage(`conversation_id=${conversation.id} 대화를 삭제했습니다.`);
+    } catch (e) {
+      setStatusMessage(`대화 삭제 오류: ${e.message}`);
     }
   };
 
@@ -73,6 +114,11 @@ function MyConversationsPage({ onOpenConversation }) {
         const data = await res.json();
 
         if (!ignore) {
+          if (!res.ok) {
+            setStatusMessage(`대화 목록 조회 실패: ${JSON.stringify(data)}`);
+            return;
+          }
+
           setConversations(Array.isArray(data) ? data : []);
           setStatusMessage("대화 목록을 불러왔습니다.");
         }
@@ -120,7 +166,7 @@ function MyConversationsPage({ onOpenConversation }) {
             <div className="empty-box">대화가 없습니다.</div>
           ) : (
             conversations.map((item) => (
-              <button
+              <div
                 key={item.id}
                 className={
                   selectedConversation?.id === item.id
@@ -128,15 +174,36 @@ function MyConversationsPage({ onOpenConversation }) {
                     : "conversation-item"
                 }
                 onClick={() => loadMessages(item)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    loadMessages(item);
+                  }
+                }}
               >
-                <div className="conversation-item__title">{item.title}</div>
+                <div className="conversation-item__top">
+                  <div className="conversation-item__title">{item.title}</div>
+                  {String(activeConversationId) === String(item.id) && (
+                    <span className="active-badge">열림</span>
+                  )}
+                </div>
                 <div className="conversation-item__meta">
-                  ID {item.id} · 메시지 {item.message_count}개
+                  ID {item.id} / 메시지 {item.message_count}개
                 </div>
                 <div className="conversation-item__date">
                   {formatDate(item.updated_at)}
                 </div>
-              </button>
+                <div className="conversation-item__actions">
+                  <button
+                    className="mini-btn danger"
+                    type="button"
+                    onClick={(e) => deleteConversation(item, e)}
+                  >
+                    삭제
+                  </button>
+                </div>
+              </div>
             ))
           )}
         </div>
@@ -162,6 +229,12 @@ function MyConversationsPage({ onOpenConversation }) {
                 onClick={() => onOpenConversation(selectedConversation.id)}
               >
                 이 대화 이어서 하기
+              </button>
+              <button
+                className="secondary-btn danger-btn"
+                onClick={(e) => deleteConversation(selectedConversation, e)}
+              >
+                대화 삭제
               </button>
             </div>
 
